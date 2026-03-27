@@ -2,7 +2,7 @@
 
 **Browser and browser profile selector for opening links on Windows**
 
-BrowserAptor is a lightweight .NET 8 WPF application that registers itself as a default browser on Windows. Every time you click a link (e.g. from email, Slack, Teams, etc.), BrowserAptor intercepts it and shows you a selector window so you can choose exactly which browser **and which profile** to open the link in.
+BrowserAptor is a lightweight .NET 10 WPF application that registers itself as a default browser on Windows. Every time you click a link (e.g. from email, Slack, Teams, etc.), BrowserAptor intercepts it and shows you a selector window so you can choose exactly which browser **and which profile** to open the link in.
 
 ---
 
@@ -22,7 +22,7 @@ BrowserAptor is a lightweight .NET 8 WPF application that registers itself as a 
 browseraptor/
 ├── BrowserAptor.slnx                 # Solution file
 ├── src/
-│   ├── BrowserAptor/                 # WPF application (Windows, net8.0-windows)
+│   ├── BrowserAptor/                 # WPF application (Windows, net10.0-windows)
 │   │   ├── App.xaml / App.xaml.cs    # Application entry point & startup logic
 │   │   ├── Views/
 │   │   │   └── BrowserSelectorWindow # Main selector UI
@@ -33,7 +33,7 @@ browseraptor/
 │   │   ├── ExeIconConverter.cs       # WPF converter: exe path → icon
 │   │   └── Resources/
 │   │       └── browseraptor.ico
-│   └── BrowserAptor.Core/            # Platform-agnostic core library (net8.0)
+│   └── BrowserAptor.Core/            # Platform-agnostic core library (net10.0)
 │       ├── Models/
 │       │   ├── BrowserInfo.cs
 │       │   ├── BrowserProfile.cs
@@ -45,7 +45,7 @@ browseraptor/
 │           ├── BrowserLaunchService.cs      # Process.Start launcher
 │           └── FirefoxProfileParser.cs      # profiles.ini parser
 └── tests/
-    └── BrowserAptor.Tests/           # xUnit tests (net8.0, runs on Linux/Mac/Windows)
+    └── BrowserAptor.Tests/           # xUnit tests (net10.0, runs on Linux/Mac/Windows)
         └── BrowserTests.cs
 ```
 
@@ -55,7 +55,7 @@ browseraptor/
 
 ### Prerequisites
 
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10)
 - Windows 10 / 11 (runtime; build works on any OS)
 
 ### Build
