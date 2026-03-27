@@ -36,11 +36,14 @@ jobs:
             -p:PublishSingleFile=true `
             -o publish/
 
+      - name: Zip build output
+        run: |
+          Get-ChildItem -Path publish\ -Exclude *.pdb |
+            Compress-Archive -DestinationPath BrowserAptor-win-x64.zip
+
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: BrowserAptor-win-x64
-          path: |
-            publish/
-            !publish/*.pdb
+          path: BrowserAptor-win-x64.zip
           retention-days: 30
