@@ -1,0 +1,20 @@
+# Build outputs
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.vscode/
+
+# NuGet
+*.nupkg
+packages/
+*.lock.json
+!packages.lock.json
+
+# Rider
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
