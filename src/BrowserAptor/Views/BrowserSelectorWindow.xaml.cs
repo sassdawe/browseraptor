@@ -15,6 +15,10 @@ public partial class BrowserSelectorWindow : Window
         InitializeComponent();
         DataContext = viewModel;
         viewModel.RequestClose += Close;
+
+        // Cap the window height so it never exceeds the visible screen.
+        const double WindowHeightMargin = 60;
+        MaxHeight = SystemParameters.PrimaryScreenHeight - WindowHeightMargin;
     }
 
     private void BrowserList_MouseDoubleClick(object sender, MouseButtonEventArgs e)

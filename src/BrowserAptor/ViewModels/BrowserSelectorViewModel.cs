@@ -3,6 +3,7 @@ using BrowserAptor.Services;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Windows;
 using System.Windows.Input;
 
 namespace BrowserAptor.ViewModels;
@@ -15,6 +16,7 @@ public class BrowserSelectorViewModel : INotifyPropertyChanged
     private readonly IBrowserDetectionService _detectionService;
     private readonly IBrowserLaunchService _launchService;
     private readonly string _url;
+    private readonly DisplayNameStore _displayNames = new();
 
     private BrowserEntryViewModel? _selectedEntry;
 
@@ -35,6 +37,7 @@ public class BrowserSelectorViewModel : INotifyPropertyChanged
 
     public ICommand OpenCommand { get; }
     public ICommand CancelCommand { get; }
+    public ICommand CopyLinkCommand { get; }
 
     public event Action? RequestClose;
 
@@ -47,8 +50,9 @@ public class BrowserSelectorViewModel : INotifyPropertyChanged
         _launchService = launchService;
         _url = url;
 
-        OpenCommand = new RelayCommand(ExecuteOpen, CanOpen);
-        CancelCommand = new RelayCommand(_ => RequestClose?.Invoke());
+        OpenCommand     = new RelayCommand(ExecuteOpen, CanOpen);
+        CancelCommand   = new RelayCommand(_ => RequestClose?.Invoke());
+        CopyLinkCommand = new RelayCommand(_ => Clipboard.SetText(_url));
 
         LoadBrowsers();
     }
@@ -63,14 +67,16 @@ public class BrowserSelectorViewModel : INotifyPropertyChanged
             if (browser.Profiles.Count == 1)
             {
                 // Single-profile browser: show as one entry
-                Entries.Add(new BrowserEntryViewModel(browser, browser.Profiles[0]));
+                string? customName = _displayNames.GetDisplayName(browser.Profiles[0].Id);
+                Entries.Add(new BrowserEntryViewModel(browser, browser.Profiles[0], customName));
             }
             else
             {
                 // Multi-profile browser: show each profile as a separate entry
                 foreach (var profile in browser.Profiles)
                 {
-                    Entries.Add(new BrowserEntryViewModel(browser, profile));
+                    string? customName = _displayNames.GetDisplayName(profile.Id);
+                    Entries.Add(new BrowserEntryViewModel(browser, profile, customName));
                 }
             }
         }
@@ -105,15 +111,23 @@ public class BrowserEntryViewModel
     public string DisplayName { get; }
     public string ExePath => Browser.ExecutablePath;
 
-    public BrowserEntryViewModel(BrowserInfo browser, BrowserProfile profile)
+    public BrowserEntryViewModel(BrowserInfo browser, BrowserProfile profile,
+                                 string? customDisplayName = null)
     {
         Browser = browser;
         Profile = profile;
 
-        bool hasMultipleProfiles = browser.Profiles.Count > 1;
-        DisplayName = hasMultipleProfiles
-            ? $"{browser.Name} — {profile}"
-            : browser.Name;
+        if (customDisplayName != null)
+        {
+            DisplayName = customDisplayName;
+        }
+        else
+        {
+            bool hasMultipleProfiles = browser.Profiles.Count > 1;
+            DisplayName = hasMultipleProfiles
+                ? $"{browser.Name} \u2014 {profile}"
+                : browser.Name;
+        }
     }
 
     public override string ToString() => DisplayName;

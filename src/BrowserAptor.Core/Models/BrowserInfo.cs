@@ -11,5 +11,36 @@ public class BrowserInfo
     public BrowserType BrowserType { get; set; }
     public List<BrowserProfile> Profiles { get; set; } = new();
 
+    /// <summary>
+    /// A stable, human-readable identifier derived from the browser name.
+    /// Example: "Microsoft Edge" → "microsoft-edge"
+    /// </summary>
+    public string Id => Slugify(Name);
+
+    /// <summary>
+    /// Converts a string to a lowercase, hyphen-separated slug containing only
+    /// ASCII letters, digits, and hyphens.
+    /// </summary>
+    internal static string Slugify(string input)
+    {
+        if (string.IsNullOrEmpty(input)) return "unknown";
+        var sb = new System.Text.StringBuilder(input.Length);
+        bool lastWasDash = true;
+        foreach (char c in input.ToLowerInvariant())
+        {
+            if (char.IsLetterOrDigit(c))
+            {
+                sb.Append(c);
+                lastWasDash = false;
+            }
+            else if (!lastWasDash)
+            {
+                sb.Append('-');
+                lastWasDash = true;
+            }
+        }
+        return sb.ToString().TrimEnd('-');
+    }
+
     public override string ToString() => Name;
 }

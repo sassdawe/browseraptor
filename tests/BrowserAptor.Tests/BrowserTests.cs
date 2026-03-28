@@ -212,6 +212,163 @@ public class FirefoxProfileParsingTests
             File.Delete(iniPath);
         }
     }
+
+    /// <summary>
+    /// Regression test: Firefox 128+ profile manager creates profiles with friendly
+    /// user-supplied names (e.g. "blue", "Green", "orange", "Original profile").
+    /// The parser must handle any Name= value, not just the legacy default* names.
+    /// </summary>
+    [Fact]
+    public void ParseFirefoxProfilesIni_ParsesNewStyleFriendlyProfileNames()
+    {
+        string iniContent = """
+            [Profile0]
+            Name=default-release
+            IsRelative=1
+            Path=Profiles/abc.default-release
+            Default=1
+
+            [Profile1]
+            Name=blue
+            IsRelative=1
+            Path=Profiles/def.blue
+
+            [Profile2]
+            Name=Green
+            IsRelative=1
+            Path=Profiles/ghi.Green
+
+            [Profile3]
+            Name=orange
+            IsRelative=1
+            Path=Profiles/jkl.orange
+
+            [Profile4]
+            Name=Original profile
+            IsRelative=1
+            Path=Profiles/mno.original-profile
+
+            """;
+
+        string iniPath = Path.Combine(Path.GetTempPath(), $"profiles_{Guid.NewGuid()}.ini");
+        File.WriteAllText(iniPath, iniContent);
+
+        try
+        {
+            var browser = new BrowserInfo
+            {
+                Name = "Mozilla Firefox",
+                ExecutablePath = @"C:\Program Files\Mozilla Firefox\firefox.exe",
+                BrowserType = BrowserType.Firefox
+            };
+
+            var profiles = FirefoxProfileParser.ParseProfilesIni(iniPath, browser);
+
+            Assert.Equal(5, profiles.Count);
+            Assert.Contains(profiles, p => p.Name == "default-release");
+            Assert.Contains(profiles, p => p.Name == "blue");
+            Assert.Contains(profiles, p => p.Name == "Green");
+            Assert.Contains(profiles, p => p.Name == "orange");
+            Assert.Contains(profiles, p => p.Name == "Original profile");
+        }
+        finally
+        {
+            if (File.Exists(iniPath)) File.Delete(iniPath);
+        }
+    }
+
+    /// <summary>
+    /// When the same profiles.ini content is parsed twice (e.g. both Roaming and
+    /// LocalAppData copies contain the same profile), de-duplication by Name should
+    /// yield a single entry.  This test exercises the GroupBy logic that guards
+    /// <see cref="FirefoxProfileParser.ParseProfilesIni"/>.
+    /// </summary>
+    [Fact]
+    public void ParseFirefoxProfilesIni_DuplicateNames_AreDeduplicatedByGroupBy()
+    {
+        string iniContent = """
+            [Profile0]
+            Name=default-release
+            IsRelative=1
+            Path=Profiles/abc.default-release
+
+            """;
+
+        string iniPath = Path.Combine(Path.GetTempPath(), $"profiles_{Guid.NewGuid()}.ini");
+        File.WriteAllText(iniPath, iniContent);
+
+        try
+        {
+            var browser = new BrowserInfo
+            {
+                Name = "Mozilla Firefox",
+                ExecutablePath = @"C:\firefox.exe",
+                BrowserType = BrowserType.Firefox
+            };
+
+            // Simulate reading the same ini from two locations and merging
+            var fromRoaming = FirefoxProfileParser.ParseProfilesIni(iniPath, browser);
+            var fromLocal   = FirefoxProfileParser.ParseProfilesIni(iniPath, browser);
+            var merged = fromRoaming
+                .Concat(fromLocal)
+                .GroupBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .ToList();
+
+            Assert.Single(merged);
+            Assert.Equal("default-release", merged[0].Name);
+        }
+        finally
+        {
+            if (File.Exists(iniPath)) File.Delete(iniPath);
+        }
+    }
+
+    /// <summary>
+    /// LibreWolf uses an identical profiles.ini format to Firefox.
+    /// The parser must return profiles regardless of the browser object passed in.
+    /// </summary>
+    [Fact]
+    public void ParseFirefoxProfilesIni_LibreWolfBrowser_ParsesProfiles()
+    {
+        string iniContent = """
+            [Profile0]
+            Name=default
+            IsRelative=1
+            Path=Profiles/xyz.default
+
+            [Profile1]
+            Name=Work
+            IsRelative=1
+            Path=Profiles/uvw.Work
+
+            """;
+
+        string iniPath = Path.Combine(Path.GetTempPath(), $"profiles_{Guid.NewGuid()}.ini");
+        File.WriteAllText(iniPath, iniContent);
+
+        try
+        {
+            var browser = new BrowserInfo
+            {
+                Name = "LibreWolf",
+                ExecutablePath = @"C:\Program Files\LibreWolf\librewolf.exe",
+                BrowserType = BrowserType.Firefox
+            };
+
+            var profiles = FirefoxProfileParser.ParseProfilesIni(iniPath, browser);
+
+            Assert.Equal(2, profiles.Count);
+            Assert.Contains(profiles, p => p.Name == "default");
+            Assert.Contains(profiles, p => p.Name == "Work");
+            // Profile IDs should be scoped to the LibreWolf browser
+            Assert.All(profiles, p => Assert.StartsWith("librewolf/", p.Id));
+        }
+        finally
+        {
+            if (File.Exists(iniPath)) File.Delete(iniPath);
+        }
+    }
 }
 
 public class BrowserInfoTests
@@ -228,5 +385,280 @@ public class BrowserInfoTests
     {
         var browser = new BrowserInfo();
         Assert.Empty(browser.Profiles);
+    }
+}
+
+public class BrowserIdTests
+{
+    [Theory]
+    [InlineData("Google Chrome",        "google-chrome")]
+    [InlineData("Microsoft Edge",       "microsoft-edge")]
+    [InlineData("Mozilla Firefox",      "mozilla-firefox")]
+    [InlineData("Vivaldi",              "vivaldi")]
+    [InlineData("Brave Browser Beta",   "brave-browser-beta")]
+    [InlineData("Firefox ESR",          "firefox-esr")]
+    [InlineData("",                     "unknown")]
+    public void BrowserInfo_Id_SlugifiesName(string name, string expectedId)
+    {
+        var browser = new BrowserInfo { Name = name };
+        Assert.Equal(expectedId, browser.Id);
+    }
+
+    [Fact]
+    public void BrowserProfile_Id_Chromium_UsesProfileDirectory()
+    {
+        var browser = new BrowserInfo { Name = "Microsoft Edge", BrowserType = BrowserType.Chromium,
+                                        ExecutablePath = @"C:\msedge.exe" };
+        var profile = new BrowserProfile { Name = "Personal", ProfileDirectory = "Default", Browser = browser };
+        Assert.Equal("microsoft-edge/default", profile.Id);
+    }
+
+    [Fact]
+    public void BrowserProfile_Id_Chromium_WorkProfile()
+    {
+        var browser = new BrowserInfo { Name = "Microsoft Edge", BrowserType = BrowserType.Chromium,
+                                        ExecutablePath = @"C:\msedge.exe" };
+        var profile = new BrowserProfile { Name = "Work", ProfileDirectory = "Profile 1", Browser = browser };
+        Assert.Equal("microsoft-edge/profile-1", profile.Id);
+    }
+
+    [Fact]
+    public void BrowserProfile_Id_Firefox_UsesProfileName()
+    {
+        // Firefox ProfileDirectory contains path separators → fall back to Name
+        var browser = new BrowserInfo { Name = "Mozilla Firefox", BrowserType = BrowserType.Firefox,
+                                        ExecutablePath = @"C:\firefox.exe" };
+        var profile = new BrowserProfile
+        {
+            Name = "default-release",
+            ProfileDirectory = "Profiles/abc123.default-release",
+            Browser = browser
+        };
+        Assert.Equal("mozilla-firefox/default-release", profile.Id);
+    }
+
+    [Fact]
+    public void BrowserProfile_Id_Firefox_WorkProfile()
+    {
+        var browser = new BrowserInfo { Name = "Mozilla Firefox", BrowserType = BrowserType.Firefox,
+                                        ExecutablePath = @"C:\firefox.exe" };
+        var profile = new BrowserProfile
+        {
+            Name = "Work",
+            ProfileDirectory = "Profiles/xyz.Work",
+            Browser = browser
+        };
+        Assert.Equal("mozilla-firefox/work", profile.Id);
+    }
+}
+
+public class DisplayNameStoreTests
+{
+    private static string TempFile() =>
+        Path.Combine(Path.GetTempPath(), $"displaynames_{Guid.NewGuid():N}.json");
+
+    private static void TryDeleteFile(string path)
+    {
+        try { if (File.Exists(path)) File.Delete(path); } catch { /* best-effort cleanup */ }
+    }
+
+    [Fact]
+    public void GetDisplayName_UnknownId_ReturnsNull()
+    {
+        var store = new DisplayNameStore(TempFile());
+        Assert.Null(store.GetDisplayName("microsoft-edge/default"));
+    }
+
+    [Fact]
+    public void SetAndGetDisplayName_ReturnsCustomName()
+    {
+        var store = new DisplayNameStore(TempFile());
+        store.SetDisplayName("microsoft-edge/default", "My Edge");
+        Assert.Equal("My Edge", store.GetDisplayName("microsoft-edge/default"));
+    }
+
+    [Fact]
+    public void SetDisplayName_IsCaseInsensitiveOnLookup()
+    {
+        string path = TempFile();
+        var store = new DisplayNameStore(path);
+        store.SetDisplayName("microsoft-edge/default", "My Edge");
+
+        // Re-load from disk to exercise the case-insensitive dict
+        var store2 = new DisplayNameStore(path);
+        Assert.Equal("My Edge", store2.GetDisplayName("MICROSOFT-EDGE/DEFAULT"));
+    }
+
+    [Fact]
+    public void SetDisplayName_PersistsToDisk()
+    {
+        string path = TempFile();
+        try
+        {
+            var store1 = new DisplayNameStore(path);
+            store1.SetDisplayName("mozilla-firefox/work", "Work Browser");
+
+            // Load from the same file in a new instance
+            var store2 = new DisplayNameStore(path);
+            Assert.Equal("Work Browser", store2.GetDisplayName("mozilla-firefox/work"));
+        }
+        finally { TryDeleteFile(path); }
+    }
+
+    [Fact]
+    public void RemoveDisplayName_RemovesEntry()
+    {
+        string path = TempFile();
+        try
+        {
+            var store = new DisplayNameStore(path);
+            store.SetDisplayName("vivaldi/default", "My Vivaldi");
+            store.RemoveDisplayName("vivaldi/default");
+
+            var store2 = new DisplayNameStore(path);
+            Assert.Null(store2.GetDisplayName("vivaldi/default"));
+        }
+        finally { TryDeleteFile(path); }
+    }
+
+    [Fact]
+    public void Load_CorruptFile_ReturnsEmptyStore()
+    {
+        string path = TempFile();
+        try
+        {
+            File.WriteAllText(path, "not valid json {{{");
+            var store = new DisplayNameStore(path);
+            Assert.Null(store.GetDisplayName("anything"));
+        }
+        finally { TryDeleteFile(path); }
+    }
+}
+
+public class ChromiumProfileReadingTests
+{
+    private static BrowserInfo MakeChromiumBrowser() =>
+        new() { Name = "Google Chrome", ExecutablePath = @"C:\chrome.exe", BrowserType = BrowserType.Chromium };
+
+    // Writes a Local State JSON with the given profile entries to a temp dir.
+    private static string CreateUserDataDir(string localStateJson)
+    {
+        string dir = Path.Combine(Path.GetTempPath(), $"userdata_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "Local State"), localStateJson);
+        return dir;
+    }
+
+    [Fact]
+    public void ReadChromiumProfilesFromDir_LocalState_SingleProfile()
+    {
+        string json = """
+            {
+              "profile": {
+                "info_cache": {
+                  "Default": { "name": "Personal", "user_name": "user@example.com" }
+                }
+              }
+            }
+            """;
+        string dir = CreateUserDataDir(json);
+        try
+        {
+            var browser = MakeChromiumBrowser();
+            var profiles = ChromiumProfileReader.ReadProfilesFromDir(dir, browser);
+
+            Assert.Single(profiles);
+            Assert.Equal("Personal", profiles[0].Name);
+            Assert.Equal("Default", profiles[0].ProfileDirectory);
+            Assert.Equal("user@example.com", profiles[0].UserName);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void ReadChromiumProfilesFromDir_LocalState_MultipleProfiles()
+    {
+        string json = """
+            {
+              "profile": {
+                "info_cache": {
+                  "Default":   { "name": "Personal" },
+                  "Profile 1": { "name": "Work", "user_name": "work@corp.com" },
+                  "Profile 2": { "name": "School" }
+                }
+              }
+            }
+            """;
+        string dir = CreateUserDataDir(json);
+        try
+        {
+            var browser = MakeChromiumBrowser();
+            var profiles = ChromiumProfileReader.ReadProfilesFromDir(dir, browser);
+
+            Assert.Equal(3, profiles.Count);
+            Assert.Contains(profiles, p => p.Name == "Personal" && p.ProfileDirectory == "Default");
+            Assert.Contains(profiles, p => p.Name == "Work"     && p.ProfileDirectory == "Profile 1" && p.UserName == "work@corp.com");
+            Assert.Contains(profiles, p => p.Name == "School"   && p.ProfileDirectory == "Profile 2");
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void ReadChromiumProfilesFromDir_FallbackScan_FindsDefaultAndProfiles()
+    {
+        // No Local State file → fall back to directory scan
+        string dir = Path.Combine(Path.GetTempPath(), $"userdata_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+
+        // Create profile directories with a Preferences file each
+        string defaultDir  = Path.Combine(dir, "Default");
+        string profile1Dir = Path.Combine(dir, "Profile 1");
+        Directory.CreateDirectory(defaultDir);
+        Directory.CreateDirectory(profile1Dir);
+        File.WriteAllText(Path.Combine(defaultDir,  "Preferences"), """{"profile":{"name":"Personal"}}""");
+        File.WriteAllText(Path.Combine(profile1Dir, "Preferences"), """{"profile":{"name":"Work"}}""");
+
+        try
+        {
+            var browser = MakeChromiumBrowser();
+            var profiles = ChromiumProfileReader.ReadProfilesFromDir(dir, browser);
+
+            Assert.Equal(2, profiles.Count);
+            Assert.Contains(profiles, p => p.Name == "Personal" && p.ProfileDirectory == "Default");
+            Assert.Contains(profiles, p => p.Name == "Work"     && p.ProfileDirectory == "Profile 1");
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void ReadChromiumProfilesFromDir_EmptyUserDataDir_ReturnsNoProfiles()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), $"userdata_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var browser = MakeChromiumBrowser();
+            var profiles = ChromiumProfileReader.ReadProfilesFromDir(dir, browser);
+            Assert.Empty(profiles);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void ReadChromiumProfilesFromDir_InvalidLocalStateJson_FallsBackToDirectoryScan()
+    {
+        string dir = CreateUserDataDir("not valid json {{{{");
+        string profileDir = Path.Combine(dir, "Default");
+        Directory.CreateDirectory(profileDir);
+        File.WriteAllText(Path.Combine(profileDir, "Preferences"), """{"profile":{"name":"Personal"}}""");
+        try
+        {
+            var browser = MakeChromiumBrowser();
+            var profiles = ChromiumProfileReader.ReadProfilesFromDir(dir, browser);
+            // Should fall back to directory scan and find the Default profile
+            Assert.Single(profiles);
+            Assert.Equal("Personal", profiles[0].Name);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
     }
 }
