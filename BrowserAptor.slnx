@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/BrowserAptor.Core/BrowserAptor.Core.csproj" />
+    <Project Path="src/BrowserAptor/BrowserAptor.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/BrowserAptor.Tests/BrowserAptor.Tests.csproj" />
+  </Folder>
+</Solution>
