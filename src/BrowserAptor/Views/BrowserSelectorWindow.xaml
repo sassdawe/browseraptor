@@ -7,9 +7,9 @@
         mc:Ignorable="d"
         Title="BrowserAptor – Choose Browser"
         Width="520"
-        Height="520"
+        SizeToContent="Height"
         MinWidth="380"
-        MinHeight="360"
+        MinHeight="260"
         WindowStartupLocation="CenterScreen"
         ResizeMode="CanResizeWithGrip"
         ShowInTaskbar="True"
@@ -102,19 +102,13 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
-
-        <!-- ScrollBar style (slim, dark) -->
-        <Style TargetType="ScrollBar">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Width" Value="6"/>
-        </Style>
     </Window.Resources>
 
     <Grid Margin="20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
@@ -138,7 +132,7 @@
                    Background="{StaticResource SurfaceBrush}"
                    Margin="0,0,0,12"/>
 
-        <!-- Browser list -->
+        <!-- Browser list — grows to fit all entries; no internal scroll bar -->
         <ListBox Grid.Row="2"
                  x:Name="BrowserList"
                  ItemsSource="{Binding Entries}"
@@ -147,7 +141,8 @@
                  Background="Transparent"
                  BorderThickness="0"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                 VirtualizingPanel.IsVirtualizing="True"
+                 ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                 VirtualizingPanel.IsVirtualizing="False"
                  MouseDoubleClick="BrowserList_MouseDoubleClick"
                  KeyDown="BrowserList_KeyDown">
             <ListBox.ItemTemplate>
@@ -187,6 +182,8 @@
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="12"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
             <Button Grid.Column="0"
@@ -195,6 +192,11 @@
                     Command="{Binding CancelCommand}"/>
 
             <Button Grid.Column="2"
+                    Content="Copy Link"
+                    Style="{StaticResource SecondaryButtonStyle}"
+                    Command="{Binding CopyLinkCommand}"/>
+
+            <Button Grid.Column="4"
                     Content="Open"
                     Style="{StaticResource PrimaryButtonStyle}"
                     Command="{Binding OpenCommand}"

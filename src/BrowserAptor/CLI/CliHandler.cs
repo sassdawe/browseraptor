@@ -71,6 +71,20 @@ internal static class CliHandler
                 return true;
             }
 
+            if (HasFlag(args, "--set-displayname", "-s"))
+            {
+                var (id, name) = ParseSetDisplayName(args);
+                if (id == null || name == null)
+                {
+                    Console.Error.WriteLine("Usage: BrowserAptor.exe --set-displayname <id> <new-name>");
+                    Console.Error.WriteLine("  Use --list-browsers to discover IDs.");
+                    exitCode = 1;
+                    return true;
+                }
+                SetDisplayName(id, name);
+                return true;
+            }
+
             // --format without an action → print help
             PrintHelp();
             return true;
@@ -93,16 +107,18 @@ internal static class CliHandler
         Console.WriteLine("Usage: BrowserAptor.exe [options]");
         Console.WriteLine();
         Console.WriteLine("Options:");
-        Console.WriteLine("  -h, --help                Show this help message");
-        Console.WriteLine("  -l, --list-browsers       List all detected browsers and profiles");
-        Console.WriteLine("  -d, --detect [<name>...]  Detect browsers (optionally filter by name)");
-        Console.WriteLine("  -f, --format <format>     Output format: list (default), json, yaml, csv, table");
+        Console.WriteLine("  -h, --help                              Show this help message");
+        Console.WriteLine("  -l, --list-browsers                     List all detected browsers and profiles");
+        Console.WriteLine("  -d, --detect [<name>...]                Detect browsers (optionally filter by name)");
+        Console.WriteLine("  -f, --format <format>                   Output format: list (default), json, yaml, csv, table");
+        Console.WriteLine("  -s, --set-displayname <id> <new-name>   Set a custom display name for a browser or profile");
         Console.WriteLine();
         Console.WriteLine("Examples:");
         Console.WriteLine("  BrowserAptor.exe --list-browsers");
         Console.WriteLine("  BrowserAptor.exe --list-browsers --format json");
         Console.WriteLine("  BrowserAptor.exe --detect Chrome");
         Console.WriteLine("  BrowserAptor.exe --detect --format table");
+        Console.WriteLine("  BrowserAptor.exe --set-displayname microsoft-edge/default \"My Edge\"");
         Console.WriteLine("  BrowserAptor.exe https://example.com   Open URL in selected browser");
         Console.WriteLine("  BrowserAptor.exe --register            Register as default browser");
         Console.WriteLine("  BrowserAptor.exe --unregister          Unregister as default browser");
@@ -115,7 +131,8 @@ internal static class CliHandler
     {
         var service = new BrowserDetectionService();
         var browsers = service.DetectBrowsers();
-        Console.WriteLine(OutputFormatter.Format(browsers, format));
+        var displayNames = new DisplayNameStore();
+        Console.WriteLine(OutputFormatter.Format(browsers, format, displayNames));
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
@@ -132,7 +149,15 @@ internal static class CliHandler
                 .ToList();
         }
 
-        Console.WriteLine(OutputFormatter.Format(browsers, format));
+        var displayNames = new DisplayNameStore();
+        Console.WriteLine(OutputFormatter.Format(browsers, format, displayNames));
+    }
+
+    private static void SetDisplayName(string id, string displayName)
+    {
+        var store = new DisplayNameStore();
+        store.SetDisplayName(id, displayName);
+        Console.WriteLine($"Display name for '{id}' set to '{displayName}'.");
     }
 
     // -------------------------------------------------------------------------
@@ -141,14 +166,16 @@ internal static class CliHandler
 
     private static bool HasAnyCliFlag(string[] args) =>
         args.Any(a =>
-            a.Equals("--help",          StringComparison.OrdinalIgnoreCase) ||
-            a.Equals("-h",              StringComparison.OrdinalIgnoreCase) ||
-            a.Equals("--list-browsers", StringComparison.OrdinalIgnoreCase) ||
-            a.Equals("-l",              StringComparison.OrdinalIgnoreCase) ||
-            a.Equals("--detect",        StringComparison.OrdinalIgnoreCase) ||
-            a.Equals("-d",              StringComparison.OrdinalIgnoreCase) ||
-            a.Equals("--format",        StringComparison.OrdinalIgnoreCase) ||
-            a.Equals("-f",              StringComparison.OrdinalIgnoreCase));
+            a.Equals("--help",             StringComparison.OrdinalIgnoreCase) ||
+            a.Equals("-h",                 StringComparison.OrdinalIgnoreCase) ||
+            a.Equals("--list-browsers",    StringComparison.OrdinalIgnoreCase) ||
+            a.Equals("-l",                 StringComparison.OrdinalIgnoreCase) ||
+            a.Equals("--detect",           StringComparison.OrdinalIgnoreCase) ||
+            a.Equals("-d",                 StringComparison.OrdinalIgnoreCase) ||
+            a.Equals("--format",           StringComparison.OrdinalIgnoreCase) ||
+            a.Equals("-f",                 StringComparison.OrdinalIgnoreCase) ||
+            a.Equals("--set-displayname",  StringComparison.OrdinalIgnoreCase) ||
+            a.Equals("-s",                 StringComparison.OrdinalIgnoreCase));
 
     private static bool HasFlag(string[] args, string longForm, string shortForm) =>
         args.Any(a =>
@@ -200,5 +227,24 @@ internal static class CliHandler
         }
 
         return names.ToArray();
+    }
+
+    /// <summary>
+    /// Returns the (id, new-name) pair following <c>--set-displayname</c> / <c>-s</c>.
+    /// Returns (null, null) if fewer than two arguments follow the flag.
+    /// </summary>
+    private static (string? Id, string? Name) ParseSetDisplayName(string[] args)
+    {
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i].Equals("--set-displayname", StringComparison.OrdinalIgnoreCase) ||
+                args[i].Equals("-s",                StringComparison.OrdinalIgnoreCase))
+            {
+                string? id   = i + 1 < args.Length ? args[i + 1] : null;
+                string? name = i + 2 < args.Length ? args[i + 2] : null;
+                return (id, name);
+            }
+        }
+        return (null, null);
     }
 }

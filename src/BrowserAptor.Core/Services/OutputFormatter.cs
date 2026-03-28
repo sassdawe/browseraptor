@@ -19,37 +19,46 @@ public static class OutputFormatter
     /// Formats the browser list in the specified format.
     /// Supported formats: list (default), json, yaml, csv, table.
     /// </summary>
-    public static string Format(IEnumerable<BrowserInfo> browsers, string format)
+    /// <param name="browsers">Browsers to format.</param>
+    /// <param name="format">Output format name.</param>
+    /// <param name="displayNames">
+    /// Optional store of custom display names.  When provided, any custom name
+    /// set for a profile's ID overrides the default derived label.
+    /// </param>
+    public static string Format(IEnumerable<BrowserInfo> browsers, string format,
+                                DisplayNameStore? displayNames = null)
     {
         var list = browsers.ToList();
         return format.ToLowerInvariant() switch
         {
-            "json"  => FormatJson(list),
-            "yaml"  => FormatYaml(list),
-            "csv"   => FormatCsv(list),
-            "table" => FormatTable(list),
-            _       => FormatList(list),
+            "json"  => FormatJson(list, displayNames),
+            "yaml"  => FormatYaml(list, displayNames),
+            "csv"   => FormatCsv(list, displayNames),
+            "table" => FormatTable(list, displayNames),
+            _       => FormatList(list, displayNames),
         };
     }
 
     // -------------------------------------------------------------------------
     // list (default)
     // -------------------------------------------------------------------------
-    private static string FormatList(List<BrowserInfo> browsers)
+    private static string FormatList(List<BrowserInfo> browsers, DisplayNameStore? displayNames)
     {
         var sb = new StringBuilder();
         foreach (var browser in browsers)
         {
             foreach (var profile in browser.Profiles)
             {
-                string label = browser.Profiles.Count == 1
+                string defaultLabel = browser.Profiles.Count == 1
                     ? browser.Name
                     : $"{browser.Name} \u2013 {profile}";
+
+                string label = displayNames?.GetDisplayName(profile.Id) ?? defaultLabel;
 
                 string profileArgs = profile.BuildArguments("<url>").Trim();
                 string callCmd = $"\"{browser.ExecutablePath}\" {profileArgs}".TrimEnd();
 
-                sb.AppendLine(label);
+                sb.AppendLine($"[{profile.Id}] {label}");
                 sb.AppendLine($"  Call: {callCmd}");
                 sb.AppendLine();
             }
@@ -60,16 +69,19 @@ public static class OutputFormatter
     // -------------------------------------------------------------------------
     // json
     // -------------------------------------------------------------------------
-    private static string FormatJson(List<BrowserInfo> browsers)
+    private static string FormatJson(List<BrowserInfo> browsers, DisplayNameStore? displayNames)
     {
         var data = browsers.Select(b => new
         {
+            id         = b.Id,
             name       = b.Name,
             executable = b.ExecutablePath,
             type       = b.BrowserType.ToString(),
             profiles   = b.Profiles.Select(p => new
             {
+                id               = p.Id,
                 name             = p.Name,
+                displayName      = displayNames?.GetDisplayName(p.Id),
                 profileDirectory = p.ProfileDirectory,
                 username         = p.UserName,
                 launchCommand    = $"\"{b.ExecutablePath}\" {p.BuildArguments("<url>")}".TrimEnd(),
@@ -82,19 +94,24 @@ public static class OutputFormatter
     // -------------------------------------------------------------------------
     // yaml  (hand-rolled; no external dependency)
     // -------------------------------------------------------------------------
-    private static string FormatYaml(List<BrowserInfo> browsers)
+    private static string FormatYaml(List<BrowserInfo> browsers, DisplayNameStore? displayNames)
     {
         var sb = new StringBuilder();
         foreach (var b in browsers)
         {
-            sb.AppendLine($"- name: {YamlString(b.Name)}");
+            sb.AppendLine($"- id: {YamlString(b.Id)}");
+            sb.AppendLine($"  name: {YamlString(b.Name)}");
             sb.AppendLine($"  executable: {YamlString(b.ExecutablePath)}");
             sb.AppendLine($"  type: {b.BrowserType}");
             sb.AppendLine("  profiles:");
             foreach (var p in b.Profiles)
             {
                 string launchCmd = $"\"{b.ExecutablePath}\" {p.BuildArguments("<url>")}".TrimEnd();
-                sb.AppendLine($"  - name: {YamlString(p.Name)}");
+                string? customName = displayNames?.GetDisplayName(p.Id);
+                sb.AppendLine($"  - id: {YamlString(p.Id)}");
+                sb.AppendLine($"    name: {YamlString(p.Name)}");
+                if (customName != null)
+                    sb.AppendLine($"    displayName: {YamlString(customName)}");
                 sb.AppendLine($"    profileDirectory: {YamlString(p.ProfileDirectory)}");
                 sb.AppendLine($"    username: {(p.UserName is null ? "null" : YamlString(p.UserName))}");
                 sb.AppendLine($"    launchCommand: {YamlString(launchCmd)}");
@@ -121,22 +138,24 @@ public static class OutputFormatter
     // -------------------------------------------------------------------------
     // csv
     // -------------------------------------------------------------------------
-    private static string FormatCsv(List<BrowserInfo> browsers)
+    private static string FormatCsv(List<BrowserInfo> browsers, DisplayNameStore? displayNames)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("Browser,Profile,Username,Executable,ProfileDirectory,LaunchCommand");
+        sb.AppendLine("Browser,Profile,Username,Executable,ProfileDirectory,LaunchCommand,Id");
         foreach (var b in browsers)
         {
             foreach (var p in b.Profiles)
             {
                 string launchCmd = $"\"{b.ExecutablePath}\" {p.BuildArguments("<url>")}".TrimEnd();
+                string displayName = displayNames?.GetDisplayName(p.Id) ?? p.Name;
                 sb.AppendLine(string.Join(',',
                     CsvField(b.Name),
-                    CsvField(p.Name),
+                    CsvField(displayName),
                     CsvField(p.UserName ?? string.Empty),
                     CsvField(b.ExecutablePath),
                     CsvField(p.ProfileDirectory),
-                    CsvField(launchCmd)));
+                    CsvField(launchCmd),
+                    CsvField(p.Id)));
             }
         }
         return sb.ToString().TrimEnd();
@@ -152,21 +171,22 @@ public static class OutputFormatter
     // -------------------------------------------------------------------------
     // table
     // -------------------------------------------------------------------------
-    private static string FormatTable(List<BrowserInfo> browsers)
+    private static string FormatTable(List<BrowserInfo> browsers, DisplayNameStore? displayNames)
     {
         // Flatten to rows first so we can compute column widths
         var rows = browsers
             .SelectMany(b => b.Profiles.Select(p => new[]
             {
                 b.Name,
-                p.ToString(),
+                displayNames?.GetDisplayName(p.Id) ?? p.ToString(),
                 p.UserName ?? string.Empty,
                 p.ProfileDirectory,
                 b.BrowserType.ToString(),
+                p.Id,
             }))
             .ToList();
 
-        string[] headers = ["Browser", "Profile", "Username", "Profile Dir", "Type"];
+        string[] headers = ["Browser", "Profile", "Username", "Profile Dir", "Type", "ID"];
         int cols = headers.Length;
         int[] widths = Enumerable.Range(0, cols)
             .Select(i => rows.Count == 0

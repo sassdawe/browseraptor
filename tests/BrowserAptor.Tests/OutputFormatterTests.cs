@@ -207,4 +207,80 @@ public class OutputFormatterTests
             Assert.NotNull(result);
         }
     }
+
+    // =========================================================================
+    // ID output
+    // =========================================================================
+
+    [Fact]
+    public void FormatList_ShowsProfileId()
+    {
+        string result = OutputFormatter.Format(SingleChromiumBrowser(), "list");
+        // The profile ID [chrome/default] should appear in the output
+        Assert.Contains("[chrome/default]", result);
+    }
+
+    [Fact]
+    public void FormatList_MultiProfile_ShowsProfileIds()
+    {
+        string result = OutputFormatter.Format(MultiBrowserList(), "list");
+        Assert.Contains("[chrome/default]",          result);
+        Assert.Contains("[chrome/profile-1]",        result);
+        Assert.Contains("[firefox/default-release]", result);
+    }
+
+    [Fact]
+    public void FormatJson_ContainsBrowserAndProfileIds()
+    {
+        string json = OutputFormatter.Format(MultiBrowserList(), "json");
+        // Browser id
+        Assert.Contains("\"id\":", json);
+        // Profile id for Chrome/Default
+        Assert.Contains("chrome/default", json);
+    }
+
+    [Fact]
+    public void FormatCsv_HasIdColumn()
+    {
+        string csv = OutputFormatter.Format(MultiBrowserList(), "csv");
+        string firstLine = csv.Split('\n')[0].Trim();
+        Assert.Contains("Id", firstLine);
+    }
+
+    [Fact]
+    public void FormatTable_HasIdColumn()
+    {
+        string table = OutputFormatter.Format(MultiBrowserList(), "table");
+        Assert.Contains("ID", table);
+    }
+
+    // =========================================================================
+    // Custom display names
+    // =========================================================================
+
+    [Fact]
+    public void FormatList_WithDisplayNames_ShowsCustomName()
+    {
+        string path  = Path.Combine(Path.GetTempPath(), $"dn_{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new DisplayNameStore(path);
+            store.SetDisplayName("chrome/default", "My Chrome");
+
+            string result = OutputFormatter.Format(SingleChromiumBrowser(), "list", store);
+
+            Assert.Contains("My Chrome", result);
+            // The ID is still shown in brackets
+            Assert.Contains("[chrome/default]", result);
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
+    [Fact]
+    public void FormatList_WithNoDisplayNames_ShowsDefaultName()
+    {
+        // No store → default behaviour unchanged
+        string result = OutputFormatter.Format(SingleChromiumBrowser(), "list");
+        Assert.Contains("Chrome", result);
+    }
 }

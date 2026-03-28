@@ -231,6 +231,153 @@ public class BrowserInfoTests
     }
 }
 
+public class BrowserIdTests
+{
+    [Theory]
+    [InlineData("Google Chrome",        "google-chrome")]
+    [InlineData("Microsoft Edge",       "microsoft-edge")]
+    [InlineData("Mozilla Firefox",      "mozilla-firefox")]
+    [InlineData("Vivaldi",              "vivaldi")]
+    [InlineData("Brave Browser Beta",   "brave-browser-beta")]
+    [InlineData("Firefox ESR",          "firefox-esr")]
+    [InlineData("",                     "unknown")]
+    public void BrowserInfo_Id_SlugifiesName(string name, string expectedId)
+    {
+        var browser = new BrowserInfo { Name = name };
+        Assert.Equal(expectedId, browser.Id);
+    }
+
+    [Fact]
+    public void BrowserProfile_Id_Chromium_UsesProfileDirectory()
+    {
+        var browser = new BrowserInfo { Name = "Microsoft Edge", BrowserType = BrowserType.Chromium,
+                                        ExecutablePath = @"C:\msedge.exe" };
+        var profile = new BrowserProfile { Name = "Personal", ProfileDirectory = "Default", Browser = browser };
+        Assert.Equal("microsoft-edge/default", profile.Id);
+    }
+
+    [Fact]
+    public void BrowserProfile_Id_Chromium_WorkProfile()
+    {
+        var browser = new BrowserInfo { Name = "Microsoft Edge", BrowserType = BrowserType.Chromium,
+                                        ExecutablePath = @"C:\msedge.exe" };
+        var profile = new BrowserProfile { Name = "Work", ProfileDirectory = "Profile 1", Browser = browser };
+        Assert.Equal("microsoft-edge/profile-1", profile.Id);
+    }
+
+    [Fact]
+    public void BrowserProfile_Id_Firefox_UsesProfileName()
+    {
+        // Firefox ProfileDirectory contains path separators → fall back to Name
+        var browser = new BrowserInfo { Name = "Mozilla Firefox", BrowserType = BrowserType.Firefox,
+                                        ExecutablePath = @"C:\firefox.exe" };
+        var profile = new BrowserProfile
+        {
+            Name = "default-release",
+            ProfileDirectory = "Profiles/abc123.default-release",
+            Browser = browser
+        };
+        Assert.Equal("mozilla-firefox/default-release", profile.Id);
+    }
+
+    [Fact]
+    public void BrowserProfile_Id_Firefox_WorkProfile()
+    {
+        var browser = new BrowserInfo { Name = "Mozilla Firefox", BrowserType = BrowserType.Firefox,
+                                        ExecutablePath = @"C:\firefox.exe" };
+        var profile = new BrowserProfile
+        {
+            Name = "Work",
+            ProfileDirectory = "Profiles/xyz.Work",
+            Browser = browser
+        };
+        Assert.Equal("mozilla-firefox/work", profile.Id);
+    }
+}
+
+public class DisplayNameStoreTests
+{
+    private static string TempFile() =>
+        Path.Combine(Path.GetTempPath(), $"displaynames_{Guid.NewGuid():N}.json");
+
+    private static void TryDeleteFile(string path)
+    {
+        try { if (File.Exists(path)) File.Delete(path); } catch { /* best-effort cleanup */ }
+    }
+
+    [Fact]
+    public void GetDisplayName_UnknownId_ReturnsNull()
+    {
+        var store = new DisplayNameStore(TempFile());
+        Assert.Null(store.GetDisplayName("microsoft-edge/default"));
+    }
+
+    [Fact]
+    public void SetAndGetDisplayName_ReturnsCustomName()
+    {
+        var store = new DisplayNameStore(TempFile());
+        store.SetDisplayName("microsoft-edge/default", "My Edge");
+        Assert.Equal("My Edge", store.GetDisplayName("microsoft-edge/default"));
+    }
+
+    [Fact]
+    public void SetDisplayName_IsCaseInsensitiveOnLookup()
+    {
+        string path = TempFile();
+        var store = new DisplayNameStore(path);
+        store.SetDisplayName("microsoft-edge/default", "My Edge");
+
+        // Re-load from disk to exercise the case-insensitive dict
+        var store2 = new DisplayNameStore(path);
+        Assert.Equal("My Edge", store2.GetDisplayName("MICROSOFT-EDGE/DEFAULT"));
+    }
+
+    [Fact]
+    public void SetDisplayName_PersistsToDisk()
+    {
+        string path = TempFile();
+        try
+        {
+            var store1 = new DisplayNameStore(path);
+            store1.SetDisplayName("mozilla-firefox/work", "Work Browser");
+
+            // Load from the same file in a new instance
+            var store2 = new DisplayNameStore(path);
+            Assert.Equal("Work Browser", store2.GetDisplayName("mozilla-firefox/work"));
+        }
+        finally { TryDeleteFile(path); }
+    }
+
+    [Fact]
+    public void RemoveDisplayName_RemovesEntry()
+    {
+        string path = TempFile();
+        try
+        {
+            var store = new DisplayNameStore(path);
+            store.SetDisplayName("vivaldi/default", "My Vivaldi");
+            store.RemoveDisplayName("vivaldi/default");
+
+            var store2 = new DisplayNameStore(path);
+            Assert.Null(store2.GetDisplayName("vivaldi/default"));
+        }
+        finally { TryDeleteFile(path); }
+    }
+
+    [Fact]
+    public void Load_CorruptFile_ReturnsEmptyStore()
+    {
+        string path = TempFile();
+        try
+        {
+            File.WriteAllText(path, "not valid json {{{");
+            var store = new DisplayNameStore(path);
+            Assert.Null(store.GetDisplayName("anything"));
+        }
+        finally { TryDeleteFile(path); }
+    }
+}
+
 public class ChromiumProfileReadingTests
 {
     private static BrowserInfo MakeChromiumBrowser() =>
