@@ -1,0 +1,46 @@
+name: Pre-release Build
+
+on:
+  pull_request:
+
+jobs:
+  pre-release:
+    name: Pre-release Installer (win-x64)
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore BrowserAptor.slnx
+
+      - name: Run tests
+        run: dotnet test tests/BrowserAptor.Tests/BrowserAptor.Tests.csproj --no-restore -c Release
+
+      - name: Publish self-contained executable
+        run: |
+          dotnet publish src/BrowserAptor/BrowserAptor.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -o publish/
+
+      - name: Zip build output
+        run: |
+          Get-ChildItem -Path publish\ -Exclude *.pdb |
+            Compress-Archive -DestinationPath BrowserAptor-win-x64-pr${{ github.event.pull_request.number }}.zip
+
+      - name: Upload pre-release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BrowserAptor-win-x64-pr${{ github.event.pull_request.number }}
+          path: BrowserAptor-win-x64-pr${{ github.event.pull_request.number }}.zip
+          retention-days: 14
