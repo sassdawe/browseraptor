@@ -2,7 +2,6 @@ using BrowserAptor.Models;
 using Microsoft.Win32;
 using System.IO;
 using System.Runtime.Versioning;
-using System.Text.Json;
 
 namespace BrowserAptor.Services;
 
@@ -126,6 +125,7 @@ public class BrowserDetectionService : IBrowserDetectionService
                                "opera.exe", "chromium.exe", "arc.exe", "thorium.exe",
                                "yandex.exe" };
 
+        // Search near the User Data directory (covers per-user / portable installs)
         foreach (string dir in new[] { parent, Path.Combine(parent, "Application") })
         {
             if (!Directory.Exists(dir)) continue;
@@ -141,95 +141,52 @@ public class BrowserDetectionService : IBrowserDetectionService
             if (File.Exists(candidate)) return candidate;
         }
 
+        // For per-machine installs the exe lives in Program Files while User Data
+        // stays under %LOCALAPPDATA%.  Derive the vendor/product directories from
+        // the User Data path (e.g. …\Microsoft\Edge\User Data → Microsoft\Edge)
+        // and probe the matching Program Files location.
+        string productDir = Path.GetFileName(parent);
+        string vendorDir  = Path.GetFileName(grandParent);
+
+        if (!string.IsNullOrEmpty(productDir) && !string.IsNullOrEmpty(vendorDir))
+        {
+            string[] programDirs =
+            {
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+            };
+
+            foreach (string progDir in programDirs)
+            {
+                // Try  {PF}\{Vendor}\{Product}\Application\  (e.g. Microsoft\Edge)
+                string appDir = Path.Combine(progDir, vendorDir, productDir, "Application");
+                if (Directory.Exists(appDir))
+                {
+                    foreach (string exe in exeNames)
+                    {
+                        string path = Path.Combine(appDir, exe);
+                        if (File.Exists(path)) return path;
+                    }
+                }
+
+                // Also try  {PF}\{Product}\Application\  (single-level, no vendor dir)
+                appDir = Path.Combine(progDir, productDir, "Application");
+                if (Directory.Exists(appDir))
+                {
+                    foreach (string exe in exeNames)
+                    {
+                        string path = Path.Combine(appDir, exe);
+                        if (File.Exists(path)) return path;
+                    }
+                }
+            }
+        }
+
         return null;
     }
 
     private static List<BrowserProfile> ReadChromiumProfiles(string userDataDir, BrowserInfo browser)
-    {
-        var profiles = new List<BrowserProfile>();
-
-        // Read local state file which lists all profiles
-        string localStatePath = Path.Combine(userDataDir, "Local State");
-        if (File.Exists(localStatePath))
-        {
-            try
-            {
-                string json = File.ReadAllText(localStatePath);
-                using var doc = JsonDocument.Parse(json);
-                if (doc.RootElement.TryGetProperty("profile", out var profileSection) &&
-                    profileSection.TryGetProperty("info_cache", out var infoCache))
-                {
-                    foreach (var profileEntry in infoCache.EnumerateObject())
-                    {
-                        string profileDir = profileEntry.Name;
-                        string profileName = profileDir; // fallback
-                        string? userName = null;
-
-                        if (profileEntry.Value.TryGetProperty("name", out var nameEl))
-                            profileName = nameEl.GetString() ?? profileDir;
-
-                        if (profileEntry.Value.TryGetProperty("user_name", out var userNameEl))
-                            userName = userNameEl.GetString();
-
-                        string? avatarPath = null;
-                        if (profileEntry.Value.TryGetProperty("last_downloaded_gaia_picture_url_with_size",
-                                out var avatarEl))
-                            avatarPath = avatarEl.GetString();
-
-                        profiles.Add(new BrowserProfile
-                        {
-                            Name = profileName,
-                            ProfileDirectory = profileDir,
-                            UserName = userName,
-                            AvatarIconPath = avatarPath,
-                            Browser = browser
-                        });
-                    }
-                }
-            }
-            catch (Exception)
-            {
-                // If we can't parse, fall through to directory scan
-            }
-        }
-
-        // Fall back to scanning directories if Local State didn't yield profiles
-        if (profiles.Count == 0)
-        {
-            foreach (string dir in Directory.EnumerateDirectories(userDataDir))
-            {
-                string dirName = Path.GetFileName(dir);
-                if (dirName != "Default" &&
-                    !dirName.StartsWith("Profile ", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                string prefsFile = Path.Combine(dir, "Preferences");
-                string displayName = dirName;
-
-                if (File.Exists(prefsFile))
-                {
-                    try
-                    {
-                        string json = File.ReadAllText(prefsFile);
-                        using var doc = JsonDocument.Parse(json);
-                        if (doc.RootElement.TryGetProperty("profile", out var p) &&
-                            p.TryGetProperty("name", out var n))
-                            displayName = n.GetString() ?? dirName;
-                    }
-                    catch { /* ignore */ }
-                }
-
-                profiles.Add(new BrowserProfile
-                {
-                    Name = displayName,
-                    ProfileDirectory = dirName,
-                    Browser = browser
-                });
-            }
-        }
-
-        return profiles;
-    }
+        => ChromiumProfileReader.ReadProfilesFromDir(userDataDir, browser);
 
     // ------------------------------------------------------------------
     // Firefox detection
@@ -378,6 +335,25 @@ public class BrowserDetectionService : IBrowserDetectionService
     // Registry-based fallback (StartMenuInternet)
     // ------------------------------------------------------------------
 
+    /// <summary>
+    /// Finds the Chromium User Data directory for a browser with the given display name
+    /// by scanning the known <see cref="ChromiumLocalPaths"/> entries.
+    /// </summary>
+    private static string? FindChromiumUserDataDir(string browserName)
+    {
+        string localApp = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        foreach (var (subPath, name) in ChromiumLocalPaths)
+        {
+            if (string.Equals(name, browserName, StringComparison.OrdinalIgnoreCase))
+            {
+                string dir = Path.Combine(localApp, subPath);
+                if (Directory.Exists(dir))
+                    return dir;
+            }
+        }
+        return null;
+    }
+
     private void DetectViaBrowserRegistry(List<BrowserInfo> browsers)
     {
         // Collect already-found executable paths to avoid duplicates
@@ -424,6 +400,14 @@ public class BrowserDetectionService : IBrowserDetectionService
                     if (browser.BrowserType == BrowserType.Firefox)
                     {
                         browser.Profiles.AddRange(ReadFirefoxProfiles(browser));
+                    }
+                    else if (browser.BrowserType == BrowserType.Chromium)
+                    {
+                        // Find the User Data directory that belongs to this browser
+                        // (the exe may be in Program Files while User Data is in LocalAppData)
+                        string? userDataDir = FindChromiumUserDataDir(browser.Name);
+                        if (userDataDir != null)
+                            browser.Profiles.AddRange(ReadChromiumProfiles(userDataDir, browser));
                     }
 
                     if (browser.Profiles.Count == 0)

@@ -230,3 +230,131 @@ public class BrowserInfoTests
         Assert.Empty(browser.Profiles);
     }
 }
+
+public class ChromiumProfileReadingTests
+{
+    private static BrowserInfo MakeChromiumBrowser() =>
+        new() { Name = "Google Chrome", ExecutablePath = @"C:\chrome.exe", BrowserType = BrowserType.Chromium };
+
+    // Writes a Local State JSON with the given profile entries to a temp dir.
+    private static string CreateUserDataDir(string localStateJson)
+    {
+        string dir = Path.Combine(Path.GetTempPath(), $"userdata_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "Local State"), localStateJson);
+        return dir;
+    }
+
+    [Fact]
+    public void ReadChromiumProfilesFromDir_LocalState_SingleProfile()
+    {
+        string json = """
+            {
+              "profile": {
+                "info_cache": {
+                  "Default": { "name": "Personal", "user_name": "user@example.com" }
+                }
+              }
+            }
+            """;
+        string dir = CreateUserDataDir(json);
+        try
+        {
+            var browser = MakeChromiumBrowser();
+            var profiles = ChromiumProfileReader.ReadProfilesFromDir(dir, browser);
+
+            Assert.Single(profiles);
+            Assert.Equal("Personal", profiles[0].Name);
+            Assert.Equal("Default", profiles[0].ProfileDirectory);
+            Assert.Equal("user@example.com", profiles[0].UserName);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void ReadChromiumProfilesFromDir_LocalState_MultipleProfiles()
+    {
+        string json = """
+            {
+              "profile": {
+                "info_cache": {
+                  "Default":   { "name": "Personal" },
+                  "Profile 1": { "name": "Work", "user_name": "work@corp.com" },
+                  "Profile 2": { "name": "School" }
+                }
+              }
+            }
+            """;
+        string dir = CreateUserDataDir(json);
+        try
+        {
+            var browser = MakeChromiumBrowser();
+            var profiles = ChromiumProfileReader.ReadProfilesFromDir(dir, browser);
+
+            Assert.Equal(3, profiles.Count);
+            Assert.Contains(profiles, p => p.Name == "Personal" && p.ProfileDirectory == "Default");
+            Assert.Contains(profiles, p => p.Name == "Work"     && p.ProfileDirectory == "Profile 1" && p.UserName == "work@corp.com");
+            Assert.Contains(profiles, p => p.Name == "School"   && p.ProfileDirectory == "Profile 2");
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void ReadChromiumProfilesFromDir_FallbackScan_FindsDefaultAndProfiles()
+    {
+        // No Local State file → fall back to directory scan
+        string dir = Path.Combine(Path.GetTempPath(), $"userdata_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+
+        // Create profile directories with a Preferences file each
+        string defaultDir  = Path.Combine(dir, "Default");
+        string profile1Dir = Path.Combine(dir, "Profile 1");
+        Directory.CreateDirectory(defaultDir);
+        Directory.CreateDirectory(profile1Dir);
+        File.WriteAllText(Path.Combine(defaultDir,  "Preferences"), """{"profile":{"name":"Personal"}}""");
+        File.WriteAllText(Path.Combine(profile1Dir, "Preferences"), """{"profile":{"name":"Work"}}""");
+
+        try
+        {
+            var browser = MakeChromiumBrowser();
+            var profiles = ChromiumProfileReader.ReadProfilesFromDir(dir, browser);
+
+            Assert.Equal(2, profiles.Count);
+            Assert.Contains(profiles, p => p.Name == "Personal" && p.ProfileDirectory == "Default");
+            Assert.Contains(profiles, p => p.Name == "Work"     && p.ProfileDirectory == "Profile 1");
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void ReadChromiumProfilesFromDir_EmptyUserDataDir_ReturnsNoProfiles()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), $"userdata_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var browser = MakeChromiumBrowser();
+            var profiles = ChromiumProfileReader.ReadProfilesFromDir(dir, browser);
+            Assert.Empty(profiles);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void ReadChromiumProfilesFromDir_InvalidLocalStateJson_FallsBackToDirectoryScan()
+    {
+        string dir = CreateUserDataDir("not valid json {{{{");
+        string profileDir = Path.Combine(dir, "Default");
+        Directory.CreateDirectory(profileDir);
+        File.WriteAllText(Path.Combine(profileDir, "Preferences"), """{"profile":{"name":"Personal"}}""");
+        try
+        {
+            var browser = MakeChromiumBrowser();
+            var profiles = ChromiumProfileReader.ReadProfilesFromDir(dir, browser);
+            // Should fall back to directory scan and find the Default profile
+            Assert.Single(profiles);
+            Assert.Equal("Personal", profiles[0].Name);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+}
