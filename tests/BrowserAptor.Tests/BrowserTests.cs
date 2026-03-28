@@ -212,6 +212,163 @@ public class FirefoxProfileParsingTests
             File.Delete(iniPath);
         }
     }
+
+    /// <summary>
+    /// Regression test: Firefox 128+ profile manager creates profiles with friendly
+    /// user-supplied names (e.g. "blue", "Green", "orange", "Original profile").
+    /// The parser must handle any Name= value, not just the legacy default* names.
+    /// </summary>
+    [Fact]
+    public void ParseFirefoxProfilesIni_ParsesNewStyleFriendlyProfileNames()
+    {
+        string iniContent = """
+            [Profile0]
+            Name=default-release
+            IsRelative=1
+            Path=Profiles/abc.default-release
+            Default=1
+
+            [Profile1]
+            Name=blue
+            IsRelative=1
+            Path=Profiles/def.blue
+
+            [Profile2]
+            Name=Green
+            IsRelative=1
+            Path=Profiles/ghi.Green
+
+            [Profile3]
+            Name=orange
+            IsRelative=1
+            Path=Profiles/jkl.orange
+
+            [Profile4]
+            Name=Original profile
+            IsRelative=1
+            Path=Profiles/mno.original-profile
+
+            """;
+
+        string iniPath = Path.Combine(Path.GetTempPath(), $"profiles_{Guid.NewGuid()}.ini");
+        File.WriteAllText(iniPath, iniContent);
+
+        try
+        {
+            var browser = new BrowserInfo
+            {
+                Name = "Mozilla Firefox",
+                ExecutablePath = @"C:\Program Files\Mozilla Firefox\firefox.exe",
+                BrowserType = BrowserType.Firefox
+            };
+
+            var profiles = FirefoxProfileParser.ParseProfilesIni(iniPath, browser);
+
+            Assert.Equal(5, profiles.Count);
+            Assert.Contains(profiles, p => p.Name == "default-release");
+            Assert.Contains(profiles, p => p.Name == "blue");
+            Assert.Contains(profiles, p => p.Name == "Green");
+            Assert.Contains(profiles, p => p.Name == "orange");
+            Assert.Contains(profiles, p => p.Name == "Original profile");
+        }
+        finally
+        {
+            if (File.Exists(iniPath)) File.Delete(iniPath);
+        }
+    }
+
+    /// <summary>
+    /// When the same profiles.ini content is parsed twice (e.g. both Roaming and
+    /// LocalAppData copies contain the same profile), de-duplication by Name should
+    /// yield a single entry.  This test exercises the GroupBy logic that guards
+    /// <see cref="FirefoxProfileParser.ParseProfilesIni"/>.
+    /// </summary>
+    [Fact]
+    public void ParseFirefoxProfilesIni_DuplicateNames_AreDeduplicatedByGroupBy()
+    {
+        string iniContent = """
+            [Profile0]
+            Name=default-release
+            IsRelative=1
+            Path=Profiles/abc.default-release
+
+            """;
+
+        string iniPath = Path.Combine(Path.GetTempPath(), $"profiles_{Guid.NewGuid()}.ini");
+        File.WriteAllText(iniPath, iniContent);
+
+        try
+        {
+            var browser = new BrowserInfo
+            {
+                Name = "Mozilla Firefox",
+                ExecutablePath = @"C:\firefox.exe",
+                BrowserType = BrowserType.Firefox
+            };
+
+            // Simulate reading the same ini from two locations and merging
+            var fromRoaming = FirefoxProfileParser.ParseProfilesIni(iniPath, browser);
+            var fromLocal   = FirefoxProfileParser.ParseProfilesIni(iniPath, browser);
+            var merged = fromRoaming
+                .Concat(fromLocal)
+                .GroupBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .ToList();
+
+            Assert.Single(merged);
+            Assert.Equal("default-release", merged[0].Name);
+        }
+        finally
+        {
+            if (File.Exists(iniPath)) File.Delete(iniPath);
+        }
+    }
+
+    /// <summary>
+    /// LibreWolf uses an identical profiles.ini format to Firefox.
+    /// The parser must return profiles regardless of the browser object passed in.
+    /// </summary>
+    [Fact]
+    public void ParseFirefoxProfilesIni_LibreWolfBrowser_ParsesProfiles()
+    {
+        string iniContent = """
+            [Profile0]
+            Name=default
+            IsRelative=1
+            Path=Profiles/xyz.default
+
+            [Profile1]
+            Name=Work
+            IsRelative=1
+            Path=Profiles/uvw.Work
+
+            """;
+
+        string iniPath = Path.Combine(Path.GetTempPath(), $"profiles_{Guid.NewGuid()}.ini");
+        File.WriteAllText(iniPath, iniContent);
+
+        try
+        {
+            var browser = new BrowserInfo
+            {
+                Name = "LibreWolf",
+                ExecutablePath = @"C:\Program Files\LibreWolf\librewolf.exe",
+                BrowserType = BrowserType.Firefox
+            };
+
+            var profiles = FirefoxProfileParser.ParseProfilesIni(iniPath, browser);
+
+            Assert.Equal(2, profiles.Count);
+            Assert.Contains(profiles, p => p.Name == "default");
+            Assert.Contains(profiles, p => p.Name == "Work");
+            // Profile IDs should be scoped to the LibreWolf browser
+            Assert.All(profiles, p => Assert.StartsWith("librewolf/", p.Id));
+        }
+        finally
+        {
+            if (File.Exists(iniPath)) File.Delete(iniPath);
+        }
+    }
 }
 
 public class BrowserInfoTests

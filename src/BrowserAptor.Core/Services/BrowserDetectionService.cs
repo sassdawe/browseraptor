@@ -260,14 +260,30 @@ public class BrowserDetectionService : IBrowserDetectionService
             }
         }
 
-        // Fallback: check well-known Program Files paths
-        if (results.Count == 0)
+        // Snapshot whether Firefox was found in the registry BEFORE adding LibreWolf,
+        // so the Firefox Program-Files fallback below is only skipped when Firefox
+        // itself (not just LibreWolf) was discovered via the registry.
+        bool firefoxFoundViaRegistry = results.Count > 0;
+
+        string[] programDirs =
         {
-            string[] programDirs =
-            {
-                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
-            };
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+        };
+
+        // Always check Program Files for LibreWolf regardless of whether Firefox was
+        // found in the registry — LibreWolf registers separately from Mozilla.
+        foreach (string progDir in programDirs)
+        {
+            string lwPath = Path.Combine(progDir, "LibreWolf", "librewolf.exe");
+            if (File.Exists(lwPath))
+                results.Add((lwPath, "LibreWolf"));
+        }
+
+        // Fallback for Firefox: check well-known Program Files paths only when not
+        // already found via the registry.
+        if (!firefoxFoundViaRegistry)
+        {
             string[] firefoxDirs =
             {
                 @"Mozilla Firefox\firefox.exe",
@@ -306,14 +322,37 @@ public class BrowserDetectionService : IBrowserDetectionService
     private static List<BrowserProfile> ReadFirefoxProfiles(BrowserInfo browser)
     {
         var profiles = new List<BrowserProfile>();
-        string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        string appData      = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
-        // Try both Mozilla/Firefox and the Nightly/Dev paths
-        string[] profilesIniPaths =
+        bool isLibreWolf = browser.Name.Contains("LibreWolf", StringComparison.OrdinalIgnoreCase)
+                        || browser.ExecutablePath.Contains("librewolf", StringComparison.OrdinalIgnoreCase);
+
+        string[] profilesIniPaths;
+
+        if (isLibreWolf)
         {
-            Path.Combine(appData, "Mozilla", "Firefox", "profiles.ini"),
-            Path.Combine(appData, "Mozilla", "Firefox Nightly", "profiles.ini"),
-        };
+            // LibreWolf stores profiles under %APPDATA%\librewolf\ or %LOCALAPPDATA%\librewolf\
+            profilesIniPaths =
+            [
+                Path.Combine(appData,      "librewolf", "profiles.ini"),
+                Path.Combine(localAppData, "librewolf", "profiles.ini"),
+            ];
+        }
+        else
+        {
+            // Standard Mozilla Firefox (stable, ESR, Nightly, Dev Edition).
+            // Firefox 128+ with the new profile manager stores user-created profiles
+            // in %LOCALAPPDATA%\Mozilla\Firefox\profiles.ini in addition to the classic
+            // %APPDATA%\Mozilla\Firefox\profiles.ini location.
+            profilesIniPaths =
+            [
+                Path.Combine(appData,      "Mozilla", "Firefox",         "profiles.ini"),
+                Path.Combine(localAppData, "Mozilla", "Firefox",         "profiles.ini"),
+                Path.Combine(appData,      "Mozilla", "Firefox Nightly", "profiles.ini"),
+                Path.Combine(localAppData, "Mozilla", "Firefox Nightly", "profiles.ini"),
+            ];
+        }
 
         foreach (string iniPath in profilesIniPaths)
         {
@@ -321,7 +360,12 @@ public class BrowserDetectionService : IBrowserDetectionService
             profiles.AddRange(FirefoxProfileParser.ParseProfilesIni(iniPath, browser));
         }
 
-        return profiles;
+        // De-duplicate: the same profile can appear in both the Roaming and Local AppData
+        // profiles.ini files (e.g. the classic "default-release" profile).
+        return profiles
+            .GroupBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .ToList();
     }
 
     /// <summary>
@@ -441,7 +485,8 @@ public class BrowserDetectionService : IBrowserDetectionService
     private static BrowserType DetermineBrowserType(string exePath, string displayName)
     {
         string lower = (exePath + displayName).ToLowerInvariant();
-        if (lower.Contains("firefox") || lower.Contains("waterfox")) return BrowserType.Firefox;
+        if (lower.Contains("firefox") || lower.Contains("waterfox") || lower.Contains("librewolf"))
+            return BrowserType.Firefox;
         return BrowserType.Chromium;
     }
 }
