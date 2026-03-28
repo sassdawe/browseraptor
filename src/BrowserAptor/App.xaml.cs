@@ -1,3 +1,4 @@
+using BrowserAptor.CLI;
 using BrowserAptor.Registration;
 using BrowserAptor.Services;
 using BrowserAptor.ViewModels;
@@ -8,6 +9,7 @@ namespace BrowserAptor;
 
 /// <summary>
 /// Application entry point. Parses command-line arguments and either:
+///   • Handles CLI flags (--help, --list-browsers, --detect, --format)
 ///   • Shows the browser selector for a given URL
 ///   • Registers / unregisters the app as a browser
 ///   • Shows a welcome/setup message
@@ -19,6 +21,13 @@ public partial class App : Application
         base.OnStartup(e);
 
         string[] args = e.Args;
+
+        // Handle CLI flags before any GUI logic.
+        if (CliHandler.TryHandle(args, out int cliExitCode))
+        {
+            Shutdown(cliExitCode);
+            return;
+        }
 
         if (args.Length == 1 && args[0].Equals("--register", StringComparison.OrdinalIgnoreCase))
         {
