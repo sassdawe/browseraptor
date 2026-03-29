@@ -8,13 +8,14 @@ codebase, extend it, or contribute new features.
 ## Table of Contents
 
 1. [Prerequisites and Tools](#prerequisites-and-tools)
-2. [Repository Structure](#repository-structure)
-3. [Architecture Overview](#architecture-overview)
-4. [Project Details](#project-details)
+2. [DevContainer / GitHub Codespaces](#devcontainer--github-codespaces)
+3. [Repository Structure](#repository-structure)
+4. [Architecture Overview](#architecture-overview)
+5. [Project Details](#project-details)
    - [BrowserAptor.Core](#browseraptor-core)
    - [BrowserAptor (WPF App)](#browseraptor-wpf-app)
    - [BrowserAptor.Tests](#browseraptor-tests)
-5. [Implementation Details](#implementation-details)
+6. [Implementation Details](#implementation-details)
    - [Browser Detection Algorithm](#browser-detection-algorithm)
    - [Chromium Profile Reading](#chromium-profile-reading)
    - [Firefox Profile Parsing](#firefox-profile-parsing)
@@ -39,6 +40,55 @@ codebase, extend it, or contribute new features.
 | [Git](https://git-scm.com/) | 2.x+ | Source control |
 | Windows 10 / 11 | — | Required *at runtime* and to build the WPF app. Core library and tests build and run cross-platform. |
 | [Windows Terminal](https://aka.ms/terminal) *(optional)* | — | Recommended shell host for running .NET CLI commands |
+
+---
+
+## DevContainer / GitHub Codespaces
+
+The repository includes a ready-to-use DevContainer configuration in
+`.devcontainer/devcontainer.json`. It provides a fully pre-configured Linux environment
+with the .NET 10 SDK, all recommended VS Code extensions, and automatic NuGet restore —
+so you can start coding in under two minutes with no local setup.
+
+> **Scope:** Because the container runs Linux, the WPF project (`BrowserAptor`,
+> `net10.0-windows`) is excluded from the build. However, `BrowserAptor.Core` (the
+> platform-agnostic library) and `BrowserAptor.Tests` build and run perfectly, covering
+> all detection logic, profile parsing, formatting, and display-name persistence.
+
+### GitHub Codespaces (no local install needed)
+
+1. Navigate to the repository on GitHub.
+2. Click **Code → Codespaces → Create codespace on main**.
+3. GitHub spins up the container (≈ 2 minutes on first use; cached on subsequent opens).
+4. The `postCreateCommand` runs `dotnet restore BrowserAptor.slnx` automatically.
+5. Open a terminal and start working:
+
+   ```bash
+   dotnet build BrowserAptor.slnx
+   dotnet test tests/BrowserAptor.Tests/BrowserAptor.Tests.csproj
+   ```
+
+### VS Code Dev Containers (local Docker)
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop).
+2. Install the [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) VS Code extension.
+3. Open the repository folder in VS Code and click **Reopen in Container** when prompted
+   (or open the Command Palette → **Dev Containers: Reopen in Container**).
+4. The container builds, runs `dotnet restore`, then immediately executes a build and test
+   pass (`postAttachCommand`) so any issues are surfaced right away.
+
+### What the container includes
+
+| Component | Details |
+|-----------|---------|
+| Base image | `mcr.microsoft.com/devcontainers/dotnet:1-10.0-bookworm` (Debian 12) |
+| .NET SDK | 10.0.x (latest patch) |
+| GitHub CLI | `gh` — pre-installed via the `github-cli` feature |
+| Git LFS | Pre-installed via the `git-lfs` feature |
+| VS Code extensions | `ms-dotnettools.csharp`, `ms-dotnettools.csdevkit`, `editorconfig.editorconfig`, `eamodio.gitlens`, `yzhang.markdown-all-in-one`, `davidanson.vscode-markdownlint` |
+| Post-create | `dotnet restore BrowserAptor.slnx` |
+| Post-attach | `dotnet build` + `dotnet test` |
+| Remote user | `vscode` (non-root) |
 
 ---
 

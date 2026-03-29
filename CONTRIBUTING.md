@@ -30,6 +30,37 @@ Before you begin, make sure you have the following installed:
 
 ---
 
+## Quickest Start: DevContainer / GitHub Codespaces
+
+The repository ships a ready-to-use **DevContainer** (`.devcontainer/devcontainer.json`).
+It pre-installs the .NET 10 SDK, restores NuGet packages, and configures all recommended
+VS Code extensions automatically — no local setup required.
+
+### Option A – GitHub Codespaces (zero local install)
+
+1. Click **Code → Codespaces → Create codespace on main** on the GitHub repository page.
+2. Wait ~2 minutes for the container to build and for `dotnet restore` to complete.
+3. You're ready — open a terminal in VS Code and run:
+   ```bash
+   dotnet build BrowserAptor.slnx
+   dotnet test tests/BrowserAptor.Tests/BrowserAptor.Tests.csproj
+   ```
+
+> **Note:** Because Codespaces runs on Linux, the WPF project (`BrowserAptor`) is skipped
+> during the build — it targets `net10.0-windows`. All Core library work, unit tests, and
+> CLI development work fully inside the container.
+
+### Option B – VS Code Dev Containers (local Docker)
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop) and the
+   [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers).
+2. Open the cloned repository folder in VS Code.
+3. When prompted *"Reopen in Container"*, click it (or open the Command Palette →
+   **Dev Containers: Reopen in Container**).
+4. VS Code rebuilds the container and runs `dotnet restore` automatically.
+
+---
+
 ## Setting Up Your Development Environment
 
 ### 1. Fork the Repository
