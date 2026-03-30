@@ -1,0 +1,63 @@
+// DevContainer / GitHub Codespaces configuration for BrowserAptor.
+//
+// This environment provides everything needed to build, test, and work on
+// BrowserAptor.Core and BrowserAptor.Tests (both cross-platform).
+//
+// Note: The WPF project (BrowserAptor) targets net10.0-windows and can only
+// be built and run on a Windows host. All Core library work, unit tests, and
+// CLI development work fully inside this Linux-based container.
+{
+    "name": "BrowserAptor Dev",
+
+    // Official Microsoft .NET 10 dev container image (Debian-based)
+    "image": "mcr.microsoft.com/devcontainers/dotnet:1-10.0-bookworm",
+
+    // Install additional OS-level tools
+    "features": {
+        // Git is already in the base image; add git-lfs and shell extras
+        "ghcr.io/devcontainers/features/git-lfs:1": {},
+        "ghcr.io/devcontainers/features/github-cli:1": {}
+    },
+
+    // VS Code extensions installed automatically inside the container
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                // C# language support & IntelliSense (Roslyn-based)
+                "ms-dotnettools.csharp",
+                // C# Dev Kit: solution explorer, test runner, debugger
+                "ms-dotnettools.csdevkit",
+                // EditorConfig support (enforces .editorconfig rules)
+                "editorconfig.editorconfig",
+                // GitLens for richer Git history inside VS Code
+                "eamodio.gitlens",
+                // Markdown preview and linting for docs editing
+                "yzhang.markdown-all-in-one",
+                "davidanson.vscode-markdownlint"
+            ],
+            "settings": {
+                // Use the container's dotnet for all C# tooling
+                "dotnet.dotnetPath": "/usr/share/dotnet",
+                // Show test results inline
+                "dotnet.unitTests.runSettingsPath": "",
+                // Trim trailing whitespace on save
+                "files.trimTrailingWhitespace": true,
+                // Use LF line endings (consistent cross-platform)
+                "files.eol": "\n"
+            }
+        }
+    },
+
+    // Restore NuGet dependencies immediately after the container is created
+    "postCreateCommand": "dotnet restore BrowserAptor.slnx",
+
+    // Run a full build + test after the first attach so the workspace is
+    // pre-warmed and any issues are surfaced right away.
+    "postAttachCommand": {
+        "build": "dotnet build BrowserAptor.slnx --no-restore -c Release",
+        "test": "dotnet test tests/BrowserAptor.Tests/BrowserAptor.Tests.csproj --no-build -c Release"
+    },
+
+    // Run as the non-root vscode user that the base image provides
+    "remoteUser": "vscode"
+}
