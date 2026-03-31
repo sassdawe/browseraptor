@@ -22,37 +22,57 @@ public static class CliHandler
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool FreeConsole();
 
-    // SendInput is used to press Enter after output so the parent shell redraws
-    // its prompt below our output rather than at the line it originally occupied.
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+    // WriteConsoleInput injects key events directly into the console input buffer —
+    // the same buffer that PSReadLine reads via ReadConsoleInput.  This is more
+    // reliable than SendInput (Win32 message queue), which is not always routed to
+    // the console input buffer in modern terminals such as Windows Terminal.
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr CreateFile(
+        string lpFileName,
+        uint dwDesiredAccess,
+        uint dwShareMode,
+        IntPtr lpSecurityAttributes,
+        uint dwCreationDisposition,
+        uint dwFlagsAndAttributes,
+        IntPtr hTemplateFile);
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct INPUT
-    {
-        public uint Type;
-        public INPUTUNION Union;
-    }
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr hObject);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool WriteConsoleInput(
+        IntPtr hConsoleInput,
+        [In] INPUT_RECORD[] lpBuffer,
+        uint nLength,
+        out uint lpNumberOfEventsWritten);
 
     [StructLayout(LayoutKind.Explicit)]
-    private struct INPUTUNION
+    private struct INPUT_RECORD
     {
-        [FieldOffset(0)] public KEYBDINPUT Keyboard;
+        [FieldOffset(0)] public ushort EventType;
+        [FieldOffset(4)] public KEY_EVENT_RECORD KeyEvent;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct KEYBDINPUT
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct KEY_EVENT_RECORD
     {
-        public ushort VirtualKey;
-        public ushort ScanCode;
-        public uint Flags;
-        public uint Time;
-        public IntPtr ExtraInfo;
+        [MarshalAs(UnmanagedType.Bool)] public bool bKeyDown;
+        public ushort wRepeatCount;
+        public ushort wVirtualKeyCode;
+        public ushort wVirtualScanCode;
+        public char UnicodeChar;
+        public uint dwControlKeyState;
     }
 
-    private const uint InputKeyboard = 1;
-    private const ushort VkReturn = 0x0D;
-    private const uint KeyEventKeyUp = 0x0002;
+    private const ushort ConsoleKeyEvent  = 0x0001;
+    private const ushort VkReturn         = 0x0D;
+    private const ushort EnterScanCode    = 0x1C;
+    private const uint   GenericReadWrite = 0x80000000 | 0x40000000; // GENERIC_READ | GENERIC_WRITE
+    private const uint   FileShareRW      = 0x00000001 | 0x00000002; // FILE_SHARE_READ | FILE_SHARE_WRITE
+    private const uint   OpenExisting     = 3;                       // OPEN_EXISTING
+    private static readonly IntPtr InvalidHandle = new(-1);          // INVALID_HANDLE_VALUE
 
     private const int AttachParentProcess = -1;
 
@@ -89,11 +109,22 @@ public static class CliHandler
 
         if (isWindows)
         {
-            // The parent shell already drew its next prompt on the current line before
-            // our process started (WinExe apps don't block the shell).  Writing a blank
-            // line here ensures our output begins on its own line rather than running
-            // on from the shell prompt.
-            Console.WriteLine();
+            // The parent shell drew its "next prompt" on the current line before our
+            // WinExe started.  Overwrite that prompt with spaces so our output appears
+            // cleanly on that line instead of showing a stray "PS C:\...>" above it.
+            try
+            {
+                int top = Console.CursorTop;
+                int width = Math.Max(1, Console.WindowWidth);
+                Console.Write($"\r{new string(' ', width - 1)}\r");
+                Console.CursorTop = top; // stay on the same row after the spaces
+            }
+            catch
+            {
+                // Cursor manipulation failed (e.g. output redirected) — fall back to
+                // a plain newline so our output at least starts on a fresh line.
+                Console.WriteLine();
+            }
         }
 
         try
@@ -143,29 +174,79 @@ public static class CliHandler
 
             if (isWindows)
             {
+                // Inject Enter into the console input buffer *before* FreeConsole while
+                // the console handle is still valid.  PSReadLine reads from this buffer
+                // via ReadConsoleInput; when it processes the Enter it reads the current
+                // cursor position (end of our output) and redraws its prompt there —
+                // below our output — rather than at the stale prompt line it occupied
+                // when we started.
+                WriteEnterToConsoleInputBuffer();
                 FreeConsole();
-
-                // After freeing the console the parent shell's cursor is still positioned
-                // at the prompt line it drew before our process started.  Sending Enter
-                // causes the shell to execute a blank line and redraw its prompt below
-                // our output, so the carriage ends up where the user expects it.
-                SendEnterKey();
             }
         }
     }
 
     /// <summary>
-    /// Synthesises an Enter key-down + key-up event so the parent shell redraws
-    /// its prompt after our output (Windows only).
+    /// Writes a synthetic Enter key-down/key-up pair directly to the console input
+    /// buffer so the parent shell (PSReadLine) processes it and redraws its prompt
+    /// below our output (Windows only).
+    /// <para>
+    /// <c>WriteConsoleInput</c> is used rather than <c>SendInput</c> because it writes
+    /// straight to the console buffer that PSReadLine reads via <c>ReadConsoleInput</c>,
+    /// making it work in both <c>conhost.exe</c> and Windows Terminal.
+    /// </para>
     /// </summary>
-    private static void SendEnterKey()
+    private static void WriteEnterToConsoleInputBuffer()
     {
-        INPUT[] inputs =
-        [
-            new INPUT { Type = InputKeyboard, Union = new INPUTUNION { Keyboard = new KEYBDINPUT { VirtualKey = VkReturn } } },
-            new INPUT { Type = InputKeyboard, Union = new INPUTUNION { Keyboard = new KEYBDINPUT { VirtualKey = VkReturn, Flags = KeyEventKeyUp } } },
-        ];
-        SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
+        // Open the console input while we are still attached (AttachConsole).
+        IntPtr hInput = CreateFile(
+            "CONIN$",
+            GenericReadWrite,
+            FileShareRW,
+            IntPtr.Zero,
+            OpenExisting,
+            0,
+            IntPtr.Zero);
+
+        if (hInput == InvalidHandle)
+            return;
+
+        try
+        {
+            INPUT_RECORD[] records =
+            [
+                new INPUT_RECORD
+                {
+                    EventType = ConsoleKeyEvent,
+                    KeyEvent  = new KEY_EVENT_RECORD
+                    {
+                        bKeyDown         = true,
+                        wRepeatCount     = 1,
+                        wVirtualKeyCode  = VkReturn,
+                        wVirtualScanCode = EnterScanCode,
+                        UnicodeChar      = '\r',
+                    },
+                },
+                new INPUT_RECORD
+                {
+                    EventType = ConsoleKeyEvent,
+                    KeyEvent  = new KEY_EVENT_RECORD
+                    {
+                        bKeyDown         = false,
+                        wRepeatCount     = 1,
+                        wVirtualKeyCode  = VkReturn,
+                        wVirtualScanCode = EnterScanCode,
+                        UnicodeChar      = '\r',
+                    },
+                },
+            ];
+
+            WriteConsoleInput(hInput, records, (uint)records.Length, out _);
+        }
+        finally
+        {
+            CloseHandle(hInput);
+        }
     }
 
     // -------------------------------------------------------------------------
