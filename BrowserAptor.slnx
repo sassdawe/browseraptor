@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/BrowserAptor.Cli/BrowserAptor.Cli.csproj" />
     <Project Path="src/BrowserAptor.Core/BrowserAptor.Core.csproj" />
     <Project Path="src/BrowserAptor/BrowserAptor.csproj" />
   </Folder>

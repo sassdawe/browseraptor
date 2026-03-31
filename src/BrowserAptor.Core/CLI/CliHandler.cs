@@ -6,12 +6,14 @@ namespace BrowserAptor.CLI;
 
 /// <summary>
 /// Handles CLI mode when the application is invoked with command-line flags.
-/// Attaches to the parent process console, processes the requested command and
-/// outputs the result as text before the application exits.
+/// On Windows (WinExe) it attaches to the parent process console and fixes up
+/// cursor positioning after output. On Linux/macOS the console is already
+/// attached for a standard Exe, so those steps are skipped.
 /// </summary>
-internal static class CliHandler
+public static class CliHandler
 {
-    // Attach to the console of the parent process (e.g. cmd.exe / PowerShell)
+    // Windows-only: attach to the console of the parent process (e.g. cmd.exe / PowerShell).
+    // DllImport declarations compile on all platforms; the methods are only *called* on Windows.
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool AttachConsole(int dwProcessId);
@@ -73,18 +75,26 @@ internal static class CliHandler
         if (!HasAnyCliFlag(args))
             return false;
 
-        AttachConsole(AttachParentProcess);
+        bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+
+        if (isWindows)
+        {
+            AttachConsole(AttachParentProcess);
+        }
 
         // Redirect Console.Out so that Console.WriteLine actually writes to the
         // attached console (WinExe apps don't have a standard output stream by default).
         var stdOut = new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
         Console.SetOut(stdOut);
 
-        // The parent shell already drew its next prompt on the current line before
-        // our process started (WinExe apps don't block the shell).  Writing a blank
-        // line here ensures our output begins on its own line rather than running
-        // on from the shell prompt.
-        Console.WriteLine();
+        if (isWindows)
+        {
+            // The parent shell already drew its next prompt on the current line before
+            // our process started (WinExe apps don't block the shell).  Writing a blank
+            // line here ensures our output begins on its own line rather than running
+            // on from the shell prompt.
+            Console.WriteLine();
+        }
 
         try
         {
@@ -130,19 +140,23 @@ internal static class CliHandler
         finally
         {
             Console.Out.Flush();
-            FreeConsole();
 
-            // After freeing the console the parent shell's cursor is still positioned
-            // at the prompt line it drew before our process started.  Sending Enter
-            // causes the shell to execute a blank line and redraw its prompt below
-            // our output, so the carriage ends up where the user expects it.
-            SendEnterKey();
+            if (isWindows)
+            {
+                FreeConsole();
+
+                // After freeing the console the parent shell's cursor is still positioned
+                // at the prompt line it drew before our process started.  Sending Enter
+                // causes the shell to execute a blank line and redraw its prompt below
+                // our output, so the carriage ends up where the user expects it.
+                SendEnterKey();
+            }
         }
     }
 
     /// <summary>
     /// Synthesises an Enter key-down + key-up event so the parent shell redraws
-    /// its prompt after our output.
+    /// its prompt after our output (Windows only).
     /// </summary>
     private static void SendEnterKey()
     {
@@ -184,19 +198,17 @@ internal static class CliHandler
         Console.WriteLine("Double-clicking BrowserAptor.exe (no arguments) opens a welcome dialog.");
     }
 
-    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static void ListBrowsers(string format)
     {
-        var service = new BrowserDetectionService();
+        IBrowserDetectionService service = CreateDetectionService();
         var browsers = service.DetectBrowsers();
         var displayNames = new DisplayNameStore();
         Console.WriteLine(OutputFormatter.Format(browsers, format, displayNames));
     }
 
-    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static void DetectBrowsers(string[] nameFilters, string format)
     {
-        var service = new BrowserDetectionService();
+        IBrowserDetectionService service = CreateDetectionService();
         var browsers = service.DetectBrowsers();
 
         if (nameFilters.Length > 0)
@@ -216,6 +228,23 @@ internal static class CliHandler
         var store = new DisplayNameStore();
         store.SetDisplayName(id, displayName);
         Console.WriteLine($"Display name for '{id}' set to '{displayName}'.");
+    }
+
+    /// <summary>
+    /// Returns the appropriate <see cref="IBrowserDetectionService"/> for the
+    /// current operating system.
+    /// </summary>
+    private static IBrowserDetectionService CreateDetectionService()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            // BrowserDetectionService is [SupportedOSPlatform("windows")] — safe to call here.
+#pragma warning disable CA1416
+            return new BrowserDetectionService();
+#pragma warning restore CA1416
+        }
+
+        return new LinuxBrowserDetectionService();
     }
 
     // -------------------------------------------------------------------------
