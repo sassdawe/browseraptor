@@ -6,12 +6,14 @@ namespace BrowserAptor.CLI;
 
 /// <summary>
 /// Handles CLI mode when the application is invoked with command-line flags.
-/// Attaches to the parent process console, processes the requested command and
-/// outputs the result as text before the application exits.
+/// On Windows (WinExe) it attaches to the parent process console and fixes up
+/// cursor positioning after output. On Linux/macOS the console is already
+/// attached for a standard Exe, so those steps are skipped.
 /// </summary>
-internal static class CliHandler
+public static class CliHandler
 {
-    // Attach to the console of the parent process (e.g. cmd.exe / PowerShell)
+    // Windows-only: attach to the console of the parent process (e.g. cmd.exe / PowerShell).
+    // DllImport declarations compile on all platforms; the methods are only *called* on Windows.
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool AttachConsole(int dwProcessId);
@@ -19,6 +21,58 @@ internal static class CliHandler
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool FreeConsole();
+
+    // WriteConsoleInput injects key events directly into the console input buffer —
+    // the same buffer that PSReadLine reads via ReadConsoleInput.  This is more
+    // reliable than SendInput (Win32 message queue), which is not always routed to
+    // the console input buffer in modern terminals such as Windows Terminal.
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr CreateFile(
+        string lpFileName,
+        uint dwDesiredAccess,
+        uint dwShareMode,
+        IntPtr lpSecurityAttributes,
+        uint dwCreationDisposition,
+        uint dwFlagsAndAttributes,
+        IntPtr hTemplateFile);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr hObject);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool WriteConsoleInput(
+        IntPtr hConsoleInput,
+        [In] INPUT_RECORD[] lpBuffer,
+        uint nLength,
+        out uint lpNumberOfEventsWritten);
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct INPUT_RECORD
+    {
+        [FieldOffset(0)] public ushort EventType;
+        [FieldOffset(4)] public KEY_EVENT_RECORD KeyEvent;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct KEY_EVENT_RECORD
+    {
+        [MarshalAs(UnmanagedType.Bool)] public bool bKeyDown;
+        public ushort wRepeatCount;
+        public ushort wVirtualKeyCode;
+        public ushort wVirtualScanCode;
+        public char UnicodeChar;
+        public uint dwControlKeyState;
+    }
+
+    private const ushort ConsoleKeyEvent  = 0x0001;
+    private const ushort VkReturn         = 0x0D;
+    private const ushort EnterScanCode    = 0x1C;
+    private const uint   GenericReadWrite = 0x80000000 | 0x40000000; // GENERIC_READ | GENERIC_WRITE
+    private const uint   FileShareRW      = 0x00000001 | 0x00000002; // FILE_SHARE_READ | FILE_SHARE_WRITE
+    private const uint   OpenExisting     = 3;                       // OPEN_EXISTING
+    private static readonly IntPtr InvalidHandle = new(-1);          // INVALID_HANDLE_VALUE
 
     private const int AttachParentProcess = -1;
 
@@ -41,12 +95,37 @@ internal static class CliHandler
         if (!HasAnyCliFlag(args))
             return false;
 
-        AttachConsole(AttachParentProcess);
+        bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+
+        if (isWindows)
+        {
+            AttachConsole(AttachParentProcess);
+        }
 
         // Redirect Console.Out so that Console.WriteLine actually writes to the
         // attached console (WinExe apps don't have a standard output stream by default).
         var stdOut = new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
         Console.SetOut(stdOut);
+
+        if (isWindows)
+        {
+            // The parent shell drew its "next prompt" on the current line before our
+            // WinExe started.  Overwrite that prompt with spaces so our output appears
+            // cleanly on that line instead of showing a stray "PS C:\...>" above it.
+            try
+            {
+                int top = Console.CursorTop;
+                int width = Math.Max(1, Console.WindowWidth);
+                Console.Write($"\r{new string(' ', width - 1)}\r");
+                Console.CursorTop = top; // stay on the same row after the spaces
+            }
+            catch
+            {
+                // Cursor manipulation failed (e.g. output redirected) — fall back to
+                // a plain newline so our output at least starts on a fresh line.
+                Console.WriteLine();
+            }
+        }
 
         try
         {
@@ -92,7 +171,81 @@ internal static class CliHandler
         finally
         {
             Console.Out.Flush();
-            FreeConsole();
+
+            if (isWindows)
+            {
+                // Inject Enter into the console input buffer *before* FreeConsole while
+                // the console handle is still valid.  PSReadLine reads from this buffer
+                // via ReadConsoleInput; when it processes the Enter it reads the current
+                // cursor position (end of our output) and redraws its prompt there —
+                // below our output — rather than at the stale prompt line it occupied
+                // when we started.
+                WriteEnterToConsoleInputBuffer();
+                FreeConsole();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Writes a synthetic Enter key-down/key-up pair directly to the console input
+    /// buffer so the parent shell (PSReadLine) processes it and redraws its prompt
+    /// below our output (Windows only).
+    /// <para>
+    /// <c>WriteConsoleInput</c> is used rather than <c>SendInput</c> because it writes
+    /// straight to the console buffer that PSReadLine reads via <c>ReadConsoleInput</c>,
+    /// making it work in both <c>conhost.exe</c> and Windows Terminal.
+    /// </para>
+    /// </summary>
+    private static void WriteEnterToConsoleInputBuffer()
+    {
+        // Open the console input while we are still attached (AttachConsole).
+        IntPtr hInput = CreateFile(
+            "CONIN$",
+            GenericReadWrite,
+            FileShareRW,
+            IntPtr.Zero,
+            OpenExisting,
+            0,
+            IntPtr.Zero);
+
+        if (hInput == InvalidHandle)
+            return;
+
+        try
+        {
+            INPUT_RECORD[] records =
+            [
+                new INPUT_RECORD
+                {
+                    EventType = ConsoleKeyEvent,
+                    KeyEvent  = new KEY_EVENT_RECORD
+                    {
+                        bKeyDown         = true,
+                        wRepeatCount     = 1,
+                        wVirtualKeyCode  = VkReturn,
+                        wVirtualScanCode = EnterScanCode,
+                        UnicodeChar      = '\r',
+                    },
+                },
+                new INPUT_RECORD
+                {
+                    EventType = ConsoleKeyEvent,
+                    KeyEvent  = new KEY_EVENT_RECORD
+                    {
+                        bKeyDown         = false,
+                        wRepeatCount     = 1,
+                        wVirtualKeyCode  = VkReturn,
+                        wVirtualScanCode = EnterScanCode,
+                        UnicodeChar      = '\r',
+                    },
+                },
+            ];
+
+            WriteConsoleInput(hInput, records, (uint)records.Length, out _);
+        }
+        finally
+        {
+            CloseHandle(hInput);
         }
     }
 
@@ -126,19 +279,17 @@ internal static class CliHandler
         Console.WriteLine("Double-clicking BrowserAptor.exe (no arguments) opens a welcome dialog.");
     }
 
-    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static void ListBrowsers(string format)
     {
-        var service = new BrowserDetectionService();
+        IBrowserDetectionService service = CreateDetectionService();
         var browsers = service.DetectBrowsers();
         var displayNames = new DisplayNameStore();
         Console.WriteLine(OutputFormatter.Format(browsers, format, displayNames));
     }
 
-    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static void DetectBrowsers(string[] nameFilters, string format)
     {
-        var service = new BrowserDetectionService();
+        IBrowserDetectionService service = CreateDetectionService();
         var browsers = service.DetectBrowsers();
 
         if (nameFilters.Length > 0)
@@ -158,6 +309,23 @@ internal static class CliHandler
         var store = new DisplayNameStore();
         store.SetDisplayName(id, displayName);
         Console.WriteLine($"Display name for '{id}' set to '{displayName}'.");
+    }
+
+    /// <summary>
+    /// Returns the appropriate <see cref="IBrowserDetectionService"/> for the
+    /// current operating system.
+    /// </summary>
+    private static IBrowserDetectionService CreateDetectionService()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            // BrowserDetectionService is [SupportedOSPlatform("windows")] — safe to call here.
+#pragma warning disable CA1416
+            return new BrowserDetectionService();
+#pragma warning restore CA1416
+        }
+
+        return new LinuxBrowserDetectionService();
     }
 
     // -------------------------------------------------------------------------
