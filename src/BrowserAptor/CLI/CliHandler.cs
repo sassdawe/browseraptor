@@ -20,6 +20,38 @@ internal static class CliHandler
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool FreeConsole();
 
+    // SendInput is used to press Enter after output so the parent shell redraws
+    // its prompt below our output rather than at the line it originally occupied.
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct INPUT
+    {
+        public uint Type;
+        public INPUTUNION Union;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct INPUTUNION
+    {
+        [FieldOffset(0)] public KEYBDINPUT Keyboard;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KEYBDINPUT
+    {
+        public ushort VirtualKey;
+        public ushort ScanCode;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
+    }
+
+    private const uint InputKeyboard = 1;
+    private const ushort VkReturn = 0x0D;
+    private const uint KeyEventKeyUp = 0x0002;
+
     private const int AttachParentProcess = -1;
 
     // -------------------------------------------------------------------------
@@ -47,6 +79,12 @@ internal static class CliHandler
         // attached console (WinExe apps don't have a standard output stream by default).
         var stdOut = new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
         Console.SetOut(stdOut);
+
+        // The parent shell already drew its next prompt on the current line before
+        // our process started (WinExe apps don't block the shell).  Writing a blank
+        // line here ensures our output begins on its own line rather than running
+        // on from the shell prompt.
+        Console.WriteLine();
 
         try
         {
@@ -93,7 +131,27 @@ internal static class CliHandler
         {
             Console.Out.Flush();
             FreeConsole();
+
+            // After freeing the console the parent shell's cursor is still positioned
+            // at the prompt line it drew before our process started.  Sending Enter
+            // causes the shell to execute a blank line and redraw its prompt below
+            // our output, so the carriage ends up where the user expects it.
+            SendEnterKey();
         }
+    }
+
+    /// <summary>
+    /// Synthesises an Enter key-down + key-up event so the parent shell redraws
+    /// its prompt after our output.
+    /// </summary>
+    private static void SendEnterKey()
+    {
+        INPUT[] inputs =
+        [
+            new INPUT { Type = InputKeyboard, Union = new INPUTUNION { Keyboard = new KEYBDINPUT { VirtualKey = VkReturn } } },
+            new INPUT { Type = InputKeyboard, Union = new INPUTUNION { Keyboard = new KEYBDINPUT { VirtualKey = VkReturn, Flags = KeyEventKeyUp } } },
+        ];
+        SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
     }
 
     // -------------------------------------------------------------------------
