@@ -35,7 +35,6 @@ public static class OutputFormatter
             "yaml"  => FormatYaml(list, displayNames),
             "csv"   => FormatCsv(list, displayNames),
             "table" => FormatTable(list, displayNames),
-            "grid"  => FormatGrid(list, displayNames),
             _       => FormatList(list, displayNames),
         };
     }
@@ -218,89 +217,5 @@ public static class OutputFormatter
         foreach (int w in widths)
             sb.Append(new string('-', w + 2) + "|");
         sb.AppendLine();
-    }
-
-    // -------------------------------------------------------------------------
-    // grid
-    // -------------------------------------------------------------------------
-
-    /// <summary>
-    /// Formats browsers as a grid: one row per browser (version), columns showing
-    /// each available profile.  Regular profiles are prefixed with ●; private/incognito
-    /// profiles are prefixed with ⊘.
-    /// </summary>
-    private static string FormatGrid(List<BrowserInfo> browsers, DisplayNameStore? displayNames)
-    {
-        if (browsers.Count == 0)
-            return "(no browsers detected)";
-
-        // Determine max number of profile columns needed
-        int maxCols = browsers.Max(b => b.Profiles.Count);
-
-        // Build display labels for every cell
-        string GetCellLabel(BrowserProfile p) =>
-            p.IsIncognito
-                ? $"\u2298 {p.Name}"       // ⊘ Private Window / Incognito
-                : $"\u25cf {p.Name}";      // ● profile-name
-
-        // Compute column widths
-        string browserHeader = "Browser";
-        int browserWidth = Math.Max(browserHeader.Length, browsers.Max(b => b.Name.Length));
-
-        int[] colWidths = new int[maxCols];
-        for (int col = 0; col < maxCols; col++)
-        {
-            colWidths[col] = 0;
-            foreach (var b in browsers)
-            {
-                if (col < b.Profiles.Count)
-                    colWidths[col] = Math.Max(colWidths[col], GetCellLabel(b.Profiles[col]).Length);
-            }
-        }
-
-        var sb = new StringBuilder();
-
-        // Header row
-        sb.Append(' ');
-        sb.Append(browserHeader.PadRight(browserWidth));
-        sb.Append(' ');
-        for (int col = 0; col < maxCols; col++)
-        {
-            sb.Append("| ");
-            sb.Append(string.Empty.PadRight(colWidths[col]));
-            sb.Append(' ');
-        }
-        sb.AppendLine();
-
-        // Separator
-        sb.Append(new string('-', browserWidth + 2));
-        for (int col = 0; col < maxCols; col++)
-            sb.Append('+').Append(new string('-', colWidths[col] + 2));
-        sb.AppendLine();
-
-        // Browser rows
-        foreach (var b in browsers)
-        {
-            sb.Append(' ');
-            sb.Append(b.Name.PadRight(browserWidth));
-            sb.Append(' ');
-            for (int col = 0; col < maxCols; col++)
-            {
-                sb.Append("| ");
-                if (col < b.Profiles.Count)
-                {
-                    string label = GetCellLabel(b.Profiles[col]);
-                    sb.Append(label.PadRight(colWidths[col]));
-                }
-                else
-                {
-                    sb.Append(string.Empty.PadRight(colWidths[col]));
-                }
-                sb.Append(' ');
-            }
-            sb.AppendLine();
-        }
-
-        return sb.ToString().TrimEnd();
     }
 }

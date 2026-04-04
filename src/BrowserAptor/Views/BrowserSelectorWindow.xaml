@@ -27,6 +27,8 @@
         <SolidColorBrush x:Key="CancelBrush"      Color="#45475A"/>
         <SolidColorBrush x:Key="CancelHoverBrush" Color="#585B70"/>
 
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
         <!-- ListBoxItem style -->
         <Style x:Key="BrowserItemStyle" TargetType="ListBoxItem">
             <Setter Property="Background"         Value="Transparent"/>
@@ -52,6 +54,70 @@
                             <Trigger Property="IsSelected" Value="True">
                                 <Setter TargetName="Border" Property="Background"
                                         Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Profile tile button style (grid view) -->
+        <Style x:Key="ProfileTileStyle" TargetType="Button">
+            <Setter Property="Background"      Value="{StaticResource SurfaceBrush}"/>
+            <Setter Property="Foreground"      Value="{StaticResource ForegroundBrush}"/>
+            <Setter Property="FontSize"        Value="12"/>
+            <Setter Property="Padding"         Value="10,5"/>
+            <Setter Property="Margin"          Value="0,0,6,6"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor"          Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background"
+                                        Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- View toggle button style -->
+        <Style x:Key="ViewToggleStyle" TargetType="Button">
+            <Setter Property="Background"      Value="Transparent"/>
+            <Setter Property="Foreground"      Value="{StaticResource SubtleBrush}"/>
+            <Setter Property="FontSize"        Value="16"/>
+            <Setter Property="Width"           Value="28"/>
+            <Setter Property="Height"          Value="28"/>
+            <Setter Property="Padding"         Value="0"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor"          Value="Hand"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background"
+                                        Value="{StaticResource SelectedBrush}"/>
+                                <Setter Property="Foreground"
+                                        Value="{StaticResource ForegroundBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -112,27 +178,64 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Header -->
-        <StackPanel Grid.Row="0" Margin="0,0,0,16">
-            <TextBlock Text="Open link with"
-                       Foreground="{StaticResource SubtleBrush}"
-                       FontSize="12"
-                       Margin="0,0,0,4"/>
-            <TextBlock Text="{Binding Url}"
-                       Foreground="{StaticResource ForegroundBrush}"
-                       FontSize="13"
-                       FontWeight="SemiBold"
-                       TextTrimming="CharacterEllipsis"
-                       ToolTip="{Binding Url}"
-                       MaxWidth="460"/>
-        </StackPanel>
+        <!-- Header: URL + view toggle -->
+        <Grid Grid.Row="0" Margin="0,0,0,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="Open link with"
+                           Foreground="{StaticResource SubtleBrush}"
+                           FontSize="12"
+                           Margin="0,0,0,4"/>
+                <TextBlock Text="{Binding Url}"
+                           Foreground="{StaticResource ForegroundBrush}"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding Url}"
+                           MaxWidth="420"/>
+            </StackPanel>
+
+            <!-- Grid/List view toggle -->
+            <Button Grid.Column="1"
+                    Style="{StaticResource ViewToggleStyle}"
+                    Command="{Binding ToggleViewCommand}"
+                    VerticalAlignment="Bottom"
+                    Margin="8,0,0,0">
+                <Button.ToolTip>
+                    <ToolTip>
+                        <TextBlock>
+                            <TextBlock.Text>
+                                <Binding Path="IsGridView">
+                                    <Binding.Converter>
+                                        <local:BoolToStringConverter TrueValue="Switch to list view"
+                                                                     FalseValue="Switch to grid view"/>
+                                    </Binding.Converter>
+                                </Binding>
+                            </TextBlock.Text>
+                        </TextBlock>
+                    </ToolTip>
+                </Button.ToolTip>
+                <TextBlock>
+                    <TextBlock.Text>
+                        <Binding Path="IsGridView">
+                            <Binding.Converter>
+                                <local:BoolToStringConverter TrueValue="☰" FalseValue="⊞"/>
+                            </Binding.Converter>
+                        </Binding>
+                    </TextBlock.Text>
+                </TextBlock>
+            </Button>
+        </Grid>
 
         <!-- Separator -->
         <Separator Grid.Row="1"
                    Background="{StaticResource SurfaceBrush}"
                    Margin="0,0,0,12"/>
 
-        <!-- Browser list — grows to fit all entries; no internal scroll bar -->
+        <!-- LIST VIEW: flat list of browser + profile entries -->
         <ListBox Grid.Row="2"
                  x:Name="BrowserList"
                  ItemsSource="{Binding Entries}"
@@ -145,7 +248,8 @@
                  VirtualizingPanel.IsVirtualizing="False"
                  MouseDoubleClick="BrowserList_MouseDoubleClick"
                  PreviewMouseLeftButtonUp="BrowserList_PreviewMouseLeftButtonUp"
-                 KeyDown="BrowserList_KeyDown">
+                 KeyDown="BrowserList_KeyDown"
+                 Visibility="{Binding IsListView, Converter={StaticResource BoolToVis}}">
             <ListBox.ItemTemplate>
                 <DataTemplate>
                     <Grid>
@@ -177,6 +281,82 @@
             </ListBox.ItemTemplate>
         </ListBox>
 
+        <!-- GRID VIEW: one row per browser, profile tiles as columns -->
+        <ItemsControl Grid.Row="2"
+                      x:Name="BrowserGrid"
+                      ItemsSource="{Binding BrowserRows}"
+                      Background="Transparent"
+                      Focusable="False"
+                      KeyDown="BrowserList_KeyDown"
+                      Visibility="{Binding IsGridView, Converter={StaticResource BoolToVis}}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Grid Margin="0,4,0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Browser name + icon -->
+                        <StackPanel Grid.Column="0"
+                                    Orientation="Horizontal"
+                                    VerticalAlignment="Top"
+                                    Margin="0,4,8,0">
+                            <Image Width="20" Height="20"
+                                   Margin="0,0,6,0"
+                                   VerticalAlignment="Center"
+                                   RenderOptions.BitmapScalingMode="HighQuality">
+                                <Image.Source>
+                                    <Binding Path="ExePath"
+                                             Converter="{x:Static local:ExeIconConverter.Instance}"/>
+                                </Image.Source>
+                            </Image>
+                            <TextBlock Text="{Binding Name}"
+                                       Foreground="{StaticResource ForegroundBrush}"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </StackPanel>
+
+                        <!-- Profile tiles -->
+                        <ItemsControl Grid.Column="1"
+                                      ItemsSource="{Binding Profiles}"
+                                      Focusable="False">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource ProfileTileStyle}"
+                                            Command="{Binding LaunchCommand}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Foreground="{StaticResource AccentBrush}"
+                                                       Margin="0,0,4,0"
+                                                       VerticalAlignment="Center">
+                                                <TextBlock.Text>
+                                                    <Binding Path="Profile.IsIncognito">
+                                                        <Binding.Converter>
+                                                            <local:BoolToStringConverter TrueValue="⊘" FalseValue="●"/>
+                                                        </Binding.Converter>
+                                                    </Binding>
+                                                </TextBlock.Text>
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding Profile.Name}"
+                                                       Foreground="{StaticResource ForegroundBrush}"
+                                                       VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Grid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
         <!-- Footer buttons -->
         <Grid Grid.Row="3" Margin="0,16,0,0">
             <Grid.ColumnDefinitions>
@@ -201,7 +381,8 @@
                     Content="Open"
                     Style="{StaticResource PrimaryButtonStyle}"
                     Command="{Binding OpenCommand}"
-                    IsDefault="True"/>
+                    IsDefault="True"
+                    Visibility="{Binding IsListView, Converter={StaticResource BoolToVis}}"/>
         </Grid>
     </Grid>
 </Window>

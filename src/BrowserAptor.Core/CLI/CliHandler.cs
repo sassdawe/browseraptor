@@ -271,7 +271,7 @@ public static class CliHandler
         Console.WriteLine("  -h, --help                              Show this help message");
         Console.WriteLine("  -l, --list-browsers                     List all detected browsers and profiles");
         Console.WriteLine("  -d, --detect [<name>...]                Detect browsers (optionally filter by name)");
-        Console.WriteLine("  -f, --format <format>                   Output format: list (default), json, yaml, csv, table, grid");
+        Console.WriteLine("  -f, --format <format>                   Output format: list (default), json, yaml, csv, table");
         Console.WriteLine("  -s, --set-displayname <id> <new-name>   Set a custom display name for a browser or profile");
         Console.WriteLine("  --single-click                          Enable single-click to open a profile");
         Console.WriteLine("  --no-single-click                       Restore double-click to open (default)");
@@ -279,7 +279,6 @@ public static class CliHandler
         Console.WriteLine("Examples:");
         Console.WriteLine("  BrowserAptor.exe --list-browsers");
         Console.WriteLine("  BrowserAptor.exe --list-browsers --format json");
-        Console.WriteLine("  BrowserAptor.exe --list-browsers --format grid");
         Console.WriteLine("  BrowserAptor.exe --detect Chrome");
         Console.WriteLine("  BrowserAptor.exe --detect --format table");
         Console.WriteLine("  BrowserAptor.exe --set-displayname microsoft-edge/default \"My Edge\"");
