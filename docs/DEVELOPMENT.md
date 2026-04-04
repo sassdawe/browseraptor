@@ -752,3 +752,70 @@ The selector window will open immediately when you press F5.
 
 Open `Views/BrowserSelectorWindow.xaml` in Visual Studio 2022 for the XAML designer. The
 designer requires the Windows workload to be installed.
+
+---
+
+## Incognito / Private Profiles
+
+Every detected browser automatically gets an incognito or private-window profile appended
+after the regular profiles are collected:
+
+- **Chromium-based browsers**: a profile named `"Incognito"` with `IsIncognito = true`.
+  `BuildArguments` returns `--incognito "{url}"`.
+- **Firefox-based browsers**: a profile named `"Private Window"` with `IsIncognito = true`.
+  `BuildArguments` returns `-private-window "{url}"`.
+
+This is done in `BrowserDetectionService.DetectChromiumBrowsers`,
+`DetectFirefoxBrowsers`, `DetectViaBrowserRegistry` (Windows), and in
+`LinuxBrowserDetectionService.DetectChromiumBrowsers` / `DetectFirefoxBrowsers` (Linux).
+
+The `BrowserProfile.Id` for incognito profiles always uses the slug `incognito`, e.g.
+`google-chrome/incognito`.
+
+### Firefox "default-default" deduplication
+
+Firefox's new profile manager creates a `"default"` profile alongside the legacy
+`"default-default"` profile.  After standard name-based deduplication, `ReadFirefoxProfiles`
+(Windows) and `DetectFirefoxBrowsers` (Linux) remove `"default-default"` when `"default"`
+also exists.
+
+---
+
+## UserPreferences
+
+User preferences are persisted as JSON at `%APPDATA%\BrowserAptor\preferences.json`
+(Windows) or the equivalent `$HOME/.config` path on Linux.
+
+```json
+{
+  "SingleClickToOpen": false
+}
+```
+
+The `UserPreferences` class in `BrowserAptor.Core/Services/UserPreferences.cs` handles
+loading and saving. Corrupt or missing files fall back to defaults silently.
+
+CLI flags:
+- `--single-click` — sets `SingleClickToOpen = true` and saves.
+- `--no-single-click` — sets `SingleClickToOpen = false` and saves.
+
+The `BrowserSelectorViewModel` exposes `SingleClickToOpen` which the
+`BrowserSelectorWindow` reads via `PreviewMouseLeftButtonUp` to trigger open on a single
+click when the preference is enabled.
+
+---
+
+## Grid Output Format
+
+`OutputFormatter.Format(browsers, "grid")` renders a grid where each row is a browser and
+each column is a profile. Regular profiles are prefixed with `●`; incognito/private
+profiles are prefixed with `⊘`.
+
+Example output:
+
+```
+ Browser         | col 1            | col 2
+----------------+------------------+------------------
+ Google Chrome  | ● Personal       | ⊘ Incognito
+ Mozilla Firefox| ● default-release| ⊘ Private Window
+```

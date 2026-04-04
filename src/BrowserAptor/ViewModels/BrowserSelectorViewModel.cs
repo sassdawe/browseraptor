@@ -17,6 +17,7 @@ public class BrowserSelectorViewModel : INotifyPropertyChanged
     private readonly IBrowserLaunchService _launchService;
     private readonly string _url;
     private readonly DisplayNameStore _displayNames = new();
+    private readonly UserPreferences _preferences = new();
 
     private BrowserEntryViewModel? _selectedEntry;
 
@@ -34,6 +35,8 @@ public class BrowserSelectorViewModel : INotifyPropertyChanged
     }
 
     public string Url => _url;
+
+    public bool SingleClickToOpen => _preferences.SingleClickToOpen;
 
     public ICommand OpenCommand { get; }
     public ICommand CancelCommand { get; }

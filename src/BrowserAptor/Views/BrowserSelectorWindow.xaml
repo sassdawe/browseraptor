@@ -144,6 +144,7 @@
                  ScrollViewer.VerticalScrollBarVisibility="Disabled"
                  VirtualizingPanel.IsVirtualizing="False"
                  MouseDoubleClick="BrowserList_MouseDoubleClick"
+                 PreviewMouseLeftButtonUp="BrowserList_PreviewMouseLeftButtonUp"
                  KeyDown="BrowserList_KeyDown">
             <ListBox.ItemTemplate>
                 <DataTemplate>

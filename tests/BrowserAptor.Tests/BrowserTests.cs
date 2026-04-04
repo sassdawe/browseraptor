@@ -662,3 +662,228 @@ public class ChromiumProfileReadingTests
         finally { Directory.Delete(dir, recursive: true); }
     }
 }
+
+public class IncognitoProfileTests
+{
+    private static BrowserInfo MakeChromiumBrowser() =>
+        new() { Name = "Chrome", ExecutablePath = @"C:\chrome.exe", BrowserType = BrowserType.Chromium };
+
+    private static BrowserInfo MakeFirefoxBrowser() =>
+        new() { Name = "Firefox", ExecutablePath = @"C:\firefox.exe", BrowserType = BrowserType.Firefox };
+
+    [Fact]
+    public void ChromiumIncognito_BuildArguments_UsesIncognitoFlag()
+    {
+        var browser = MakeChromiumBrowser();
+        var profile = new BrowserProfile
+        {
+            Name = "Incognito",
+            ProfileDirectory = string.Empty,
+            Browser = browser,
+            IsIncognito = true,
+        };
+
+        string args = profile.BuildArguments("https://example.com");
+
+        Assert.Contains("--incognito", args);
+        Assert.Contains("\"https://example.com\"", args);
+        Assert.DoesNotContain("--profile-directory", args);
+    }
+
+    [Fact]
+    public void FirefoxIncognito_BuildArguments_UsesPrivateWindowFlag()
+    {
+        var browser = MakeFirefoxBrowser();
+        var profile = new BrowserProfile
+        {
+            Name = "Private Window",
+            ProfileDirectory = string.Empty,
+            Browser = browser,
+            IsIncognito = true,
+        };
+
+        string args = profile.BuildArguments("https://example.com");
+
+        Assert.Contains("-private-window", args);
+        Assert.Contains("\"https://example.com\"", args);
+        Assert.DoesNotContain("-P ", args);
+    }
+
+    [Fact]
+    public void IncognitoProfile_Id_HasIncognitoSlug()
+    {
+        var browser = MakeChromiumBrowser();
+        var profile = new BrowserProfile
+        {
+            Name = "Incognito",
+            ProfileDirectory = string.Empty,
+            Browser = browser,
+            IsIncognito = true,
+        };
+
+        Assert.Equal("chrome/incognito", profile.Id);
+    }
+
+    [Fact]
+    public void FirefoxIncognitoProfile_Id_HasIncognitoSlug()
+    {
+        var browser = MakeFirefoxBrowser();
+        var profile = new BrowserProfile
+        {
+            Name = "Private Window",
+            ProfileDirectory = string.Empty,
+            Browser = browser,
+            IsIncognito = true,
+        };
+
+        Assert.Equal("firefox/incognito", profile.Id);
+    }
+
+    [Fact]
+    public void IncognitoProfile_IsNotShownInDisplayName_AsRegularProfile()
+    {
+        var browser = MakeChromiumBrowser();
+        var profile = new BrowserProfile
+        {
+            Name = "Incognito",
+            Browser = browser,
+            IsIncognito = true,
+        };
+
+        Assert.Equal("Incognito", profile.ToString());
+    }
+}
+
+public class UserPreferencesTests
+{
+    [Fact]
+    public void DefaultPreferences_SingleClickIsDisabled()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"prefs_{Guid.NewGuid()}.json");
+        try
+        {
+            var prefs = new UserPreferences(path);
+            Assert.False(prefs.SingleClickToOpen);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void SetSingleClick_PersistsToDisk()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"prefs_{Guid.NewGuid()}.json");
+        try
+        {
+            var prefs = new UserPreferences(path);
+            prefs.SingleClickToOpen = true;
+            prefs.Save();
+
+            var loaded = new UserPreferences(path);
+            Assert.True(loaded.SingleClickToOpen);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void DisableSingleClick_PersistsToDisk()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"prefs_{Guid.NewGuid()}.json");
+        try
+        {
+            var prefs = new UserPreferences(path);
+            prefs.SingleClickToOpen = true;
+            prefs.Save();
+
+            prefs.SingleClickToOpen = false;
+            prefs.Save();
+
+            var loaded = new UserPreferences(path);
+            Assert.False(loaded.SingleClickToOpen);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Load_CorruptFile_UsesDefaults()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"prefs_{Guid.NewGuid()}.json");
+        File.WriteAllText(path, "not valid json {{{");
+        try
+        {
+            var prefs = new UserPreferences(path);
+            Assert.False(prefs.SingleClickToOpen);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+}
+
+public class FirefoxDefaultDefaultTests
+{
+    [Fact]
+    public void ParseFirefoxProfiles_DefaultDefault_RemovedWhenDefaultExists()
+    {
+        string iniContent = """
+            [Profile0]
+            Name=default
+            IsRelative=1
+            Path=Profiles/abc.default
+
+            [Profile1]
+            Name=default-default
+            IsRelative=1
+            Path=Profiles/def.default-default
+
+            [Profile2]
+            Name=Work
+            IsRelative=1
+            Path=Profiles/ghi.Work
+
+            """;
+
+        string iniPath = Path.Combine(Path.GetTempPath(), $"profiles_{Guid.NewGuid()}.ini");
+        File.WriteAllText(iniPath, iniContent);
+
+        try
+        {
+            var browser = new BrowserInfo
+            {
+                Name = "Firefox",
+                ExecutablePath = @"C:\firefox.exe",
+                BrowserType = BrowserType.Firefox
+            };
+
+            var rawProfiles = FirefoxProfileParser.ParseProfilesIni(iniPath, browser);
+
+            // Simulate the deduplication + default-default removal that BrowserDetectionService does
+            var deduplicated = rawProfiles
+                .GroupBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .ToList();
+
+            if (deduplicated.Any(p => p.Name.Equals("default", StringComparison.OrdinalIgnoreCase)))
+                deduplicated.RemoveAll(p =>
+                    p.Name.Equals("default-default", StringComparison.OrdinalIgnoreCase));
+
+            Assert.Equal(2, deduplicated.Count);
+            Assert.Contains(deduplicated, p => p.Name == "default");
+            Assert.Contains(deduplicated, p => p.Name == "Work");
+            Assert.DoesNotContain(deduplicated, p => p.Name == "default-default");
+        }
+        finally
+        {
+            File.Delete(iniPath);
+        }
+    }
+}

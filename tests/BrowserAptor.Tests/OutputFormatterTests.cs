@@ -209,6 +209,59 @@ public class OutputFormatterTests
     }
 
     // =========================================================================
+    // grid format
+    // =========================================================================
+
+    [Fact]
+    public void FormatGrid_ShowsBrowserRowsAndProfileColumns()
+    {
+        var browsers = new List<BrowserInfo>
+        {
+            new()
+            {
+                Name = "Google Chrome",
+                ExecutablePath = @"C:\chrome.exe",
+                BrowserType = BrowserType.Chromium,
+                Profiles =
+                [
+                    new() { Name = "Personal", ProfileDirectory = "Default",   Browser = null! },
+                    new() { Name = "Work",      ProfileDirectory = "Profile 1", Browser = null! },
+                    new() { Name = "Incognito", ProfileDirectory = string.Empty, Browser = null!, IsIncognito = true },
+                ],
+            },
+            new()
+            {
+                Name = "Mozilla Firefox",
+                ExecutablePath = @"C:\firefox.exe",
+                BrowserType = BrowserType.Firefox,
+                Profiles =
+                [
+                    new() { Name = "default-release", ProfileDirectory = "Profiles/abc", Browser = null! },
+                    new() { Name = "Private Window",  ProfileDirectory = string.Empty,   Browser = null!, IsIncognito = true },
+                ],
+            },
+        };
+
+        // Fix up Browser references
+        foreach (var b in browsers)
+            foreach (var p in b.Profiles)
+                p.Browser = b;
+
+        string result = OutputFormatter.Format(browsers, "grid");
+
+        // Should contain browser names
+        Assert.Contains("Google Chrome", result);
+        Assert.Contains("Mozilla Firefox", result);
+
+        // Should contain profile names with icons
+        Assert.Contains("● Personal", result);
+        Assert.Contains("● Work", result);
+        Assert.Contains("⊘ Incognito", result);
+        Assert.Contains("● default-release", result);
+        Assert.Contains("⊘ Private Window", result);
+    }
+
+    // =========================================================================
     // ID output
     // =========================================================================
 

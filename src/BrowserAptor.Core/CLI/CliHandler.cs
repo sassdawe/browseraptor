@@ -164,6 +164,14 @@ public static class CliHandler
                 return true;
             }
 
+            if (HasFlag(args, "--single-click", "--single-click") ||
+                HasFlag(args, "--no-single-click", "--no-single-click"))
+            {
+                bool enable = HasFlag(args, "--single-click", "--single-click");
+                SetSingleClick(enable);
+                return true;
+            }
+
             // --format without an action → print help
             PrintHelp();
             return true;
@@ -263,15 +271,20 @@ public static class CliHandler
         Console.WriteLine("  -h, --help                              Show this help message");
         Console.WriteLine("  -l, --list-browsers                     List all detected browsers and profiles");
         Console.WriteLine("  -d, --detect [<name>...]                Detect browsers (optionally filter by name)");
-        Console.WriteLine("  -f, --format <format>                   Output format: list (default), json, yaml, csv, table");
+        Console.WriteLine("  -f, --format <format>                   Output format: list (default), json, yaml, csv, table, grid");
         Console.WriteLine("  -s, --set-displayname <id> <new-name>   Set a custom display name for a browser or profile");
+        Console.WriteLine("  --single-click                          Enable single-click to open a profile");
+        Console.WriteLine("  --no-single-click                       Restore double-click to open (default)");
         Console.WriteLine();
         Console.WriteLine("Examples:");
         Console.WriteLine("  BrowserAptor.exe --list-browsers");
         Console.WriteLine("  BrowserAptor.exe --list-browsers --format json");
+        Console.WriteLine("  BrowserAptor.exe --list-browsers --format grid");
         Console.WriteLine("  BrowserAptor.exe --detect Chrome");
         Console.WriteLine("  BrowserAptor.exe --detect --format table");
         Console.WriteLine("  BrowserAptor.exe --set-displayname microsoft-edge/default \"My Edge\"");
+        Console.WriteLine("  BrowserAptor.exe --single-click         Enable single-click mode");
+        Console.WriteLine("  BrowserAptor.exe --no-single-click      Restore double-click mode");
         Console.WriteLine("  BrowserAptor.exe https://example.com   Open URL in selected browser");
         Console.WriteLine("  BrowserAptor.exe --register            Register as default browser");
         Console.WriteLine("  BrowserAptor.exe --unregister          Unregister as default browser");
@@ -311,6 +324,14 @@ public static class CliHandler
         Console.WriteLine($"Display name for '{id}' set to '{displayName}'.");
     }
 
+    private static void SetSingleClick(bool enable)
+    {
+        var prefs = new UserPreferences();
+        prefs.SingleClickToOpen = enable;
+        prefs.Save();
+        Console.WriteLine($"Single-click to open: {(enable ? "enabled" : "disabled")}.");
+    }
+
     /// <summary>
     /// Returns the appropriate <see cref="IBrowserDetectionService"/> for the
     /// current operating system.
@@ -343,7 +364,9 @@ public static class CliHandler
             a.Equals("--format",           StringComparison.OrdinalIgnoreCase) ||
             a.Equals("-f",                 StringComparison.OrdinalIgnoreCase) ||
             a.Equals("--set-displayname",  StringComparison.OrdinalIgnoreCase) ||
-            a.Equals("-s",                 StringComparison.OrdinalIgnoreCase));
+            a.Equals("-s",                 StringComparison.OrdinalIgnoreCase) ||
+            a.Equals("--single-click",     StringComparison.OrdinalIgnoreCase) ||
+            a.Equals("--no-single-click",  StringComparison.OrdinalIgnoreCase));
 
     private static bool HasFlag(string[] args, string longForm, string shortForm) =>
         args.Any(a =>

@@ -12,17 +12,27 @@ public class BrowserProfile
     public BrowserInfo Browser { get; set; } = null!;
 
     /// <summary>
+    /// When <c>true</c>, this profile represents a private/incognito browsing session.
+    /// </summary>
+    public bool IsIncognito { get; set; }
+
+    /// <summary>
     /// A stable, human-readable identifier of the form <c>{browserId}/{profileSlug}</c>.
+    /// Incognito profiles always use the slug <c>incognito</c>.
     /// For Chromium profiles the slug is derived from the profile directory (e.g.
     /// "Default" → "default", "Profile 1" → "profile-1"). For Firefox the profile
     /// directory contains random characters so the profile name is used instead.
-    /// Examples: "microsoft-edge/default", "mozilla-firefox/default-release"
+    /// Examples: "microsoft-edge/default", "mozilla-firefox/default-release",
+    ///           "google-chrome/incognito"
     /// </summary>
     public string Id
     {
         get
         {
             string browserSlug = Browser?.Id ?? "unknown";
+            if (IsIncognito)
+                return $"{browserSlug}/incognito";
+
             // For Chromium, ProfileDirectory is stable ("Default", "Profile 1").
             // For Firefox, ProfileDirectory is a relative path with random chars;
             // use the profile Name instead.
@@ -42,15 +52,19 @@ public class BrowserProfile
     {
         if (Browser.BrowserType == BrowserType.Firefox)
         {
+            if (IsIncognito)
+                return $"-private-window \"{url}\"";
+
             // Firefox uses -P "profile name" to select profile
             return $"-P \"{Name}\" \"{url}\"";
         }
 
-        // Chromium-based: --profile-directory="Default" or "Profile 1" etc.
+        // Chromium-based browsers
+        if (IsIncognito)
+            return $"--incognito \"{url}\"";
+
         if (!string.IsNullOrEmpty(ProfileDirectory))
-        {
             return $"--profile-directory=\"{ProfileDirectory}\" \"{url}\"";
-        }
 
         return $"\"{url}\"";
     }

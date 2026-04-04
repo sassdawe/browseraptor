@@ -1,5 +1,6 @@
 using BrowserAptor.ViewModels;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 
 namespace BrowserAptor.Views;
@@ -25,6 +26,22 @@ public partial class BrowserSelectorWindow : Window
     {
         if (DataContext is BrowserSelectorViewModel vm && vm.OpenCommand.CanExecute(null))
             vm.OpenCommand.Execute(null);
+    }
+
+    private void BrowserList_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        // Only act on single-click when single-click mode is enabled and the click
+        // landed on an item (not on the empty area of the list).
+        if (DataContext is not BrowserSelectorViewModel vm) return;
+        if (!vm.SingleClickToOpen) return;
+
+        // Verify the click target is inside a ListBoxItem
+        if (e.OriginalSource is DependencyObject source &&
+            ItemsControl.ContainerFromElement(BrowserList, source) is ListBoxItem)
+        {
+            if (vm.OpenCommand.CanExecute(null))
+                vm.OpenCommand.Execute(null);
+        }
     }
 
     private void BrowserList_KeyDown(object sender, KeyEventArgs e)

@@ -94,6 +94,14 @@ public class LinuxBrowserDetectionService : IBrowserDetectionService
                 });
             }
 
+            browser.Profiles.Add(new BrowserProfile
+            {
+                Name             = "Incognito",
+                ProfileDirectory = string.Empty,
+                Browser          = browser,
+                IsIncognito      = true,
+            });
+
             browsers.Add(browser);
         }
     }
@@ -143,6 +151,19 @@ public class LinuxBrowserDetectionService : IBrowserDetectionService
                     Browser          = browser,
                 });
             }
+
+            // Also apply default-default deduplication when profiles came from file
+            if (browser.Profiles.Any(p => p.Name.Equals("default", StringComparison.OrdinalIgnoreCase)))
+                browser.Profiles.RemoveAll(p =>
+                    p.Name.Equals("default-default", StringComparison.OrdinalIgnoreCase));
+
+            browser.Profiles.Add(new BrowserProfile
+            {
+                Name             = "Private Window",
+                ProfileDirectory = string.Empty,
+                Browser          = browser,
+                IsIncognito      = true,
+            });
 
             browsers.Add(browser);
         }
