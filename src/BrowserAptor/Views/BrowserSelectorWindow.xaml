@@ -77,8 +77,21 @@
                                 Background="{TemplateBinding Background}"
                                 CornerRadius="6"
                                 Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"/>
+                            <!-- Left accent bar using the profile's theme colour -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="3"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Rectangle Grid.Column="0"
+                                           Fill="{Binding Profile.ThemeColor,
+                                                  Converter={x:Static local:HexColorToBrushConverter.Instance}}"
+                                           RadiusX="3" RadiusY="3"
+                                           Margin="0,0,6,0"/>
+                                <ContentPresenter Grid.Column="1"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"/>
+                            </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -302,15 +315,51 @@
                                     Orientation="Horizontal"
                                     VerticalAlignment="Top"
                                     Margin="0,4,8,0">
-                            <Image Width="20" Height="20"
-                                   Margin="0,0,6,0"
-                                   VerticalAlignment="Center"
-                                   RenderOptions.BitmapScalingMode="HighQuality">
-                                <Image.Source>
-                                    <Binding Path="ExePath"
-                                             Converter="{x:Static local:ExeIconConverter.Instance}"/>
-                                </Image.Source>
-                            </Image>
+                            <!-- Icon with channel badge overlay -->
+                            <Grid Width="20" Height="20"
+                                  Margin="0,0,6,0"
+                                  VerticalAlignment="Center">
+                                <Image Width="20" Height="20"
+                                       RenderOptions.BitmapScalingMode="HighQuality">
+                                    <Image.Source>
+                                        <Binding Path="ExePath"
+                                                 Converter="{x:Static local:ExeIconConverter.Instance}"/>
+                                    </Image.Source>
+                                </Image>
+                                <!-- Channel badge — visible only for Beta/Dev/Canary/Nightly -->
+                                <Border CornerRadius="2"
+                                        Padding="1,0"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Bottom">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Channel}" Value="Beta">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Setter Property="Background" Value="#E07700"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Channel}" Value="Dev">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Setter Property="Background" Value="#0D9488"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Channel}" Value="Canary">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Setter Property="Background" Value="#CA8A04"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Channel}" Value="Nightly">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Setter Property="Background" Value="#7C3AED"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock Text="{Binding Channel}"
+                                               FontSize="5"
+                                               FontWeight="Bold"
+                                               Foreground="White"/>
+                                </Border>
+                            </Grid>
                             <TextBlock Text="{Binding Name}"
                                        Foreground="{StaticResource ForegroundBrush}"
                                        FontSize="13"

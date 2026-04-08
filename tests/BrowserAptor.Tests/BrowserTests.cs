@@ -386,6 +386,25 @@ public class BrowserInfoTests
         var browser = new BrowserInfo();
         Assert.Empty(browser.Profiles);
     }
+
+    [Theory]
+    [InlineData("Google Chrome",              null)]
+    [InlineData("Microsoft Edge",             null)]
+    [InlineData("Mozilla Firefox",            null)]
+    [InlineData("Microsoft Edge Beta",        "Beta")]
+    [InlineData("Microsoft Edge Dev",         "Dev")]
+    [InlineData("Microsoft Edge Canary",      "Canary")]
+    [InlineData("Google Chrome Beta",         "Beta")]
+    [InlineData("Google Chrome Dev",          "Dev")]
+    [InlineData("Google Chrome Canary",       "Canary")]
+    [InlineData("Firefox Nightly",            "Nightly")]
+    [InlineData("Firefox Developer Edition",  "Dev")]
+    [InlineData("Brave Browser Beta",         "Beta")]
+    public void BrowserInfo_Channel_DetectsReleaseChannel(string name, string? expectedChannel)
+    {
+        var browser = new BrowserInfo { Name = name };
+        Assert.Equal(expectedChannel, browser.Channel);
+    }
 }
 
 public class BrowserIdTests
@@ -658,6 +677,58 @@ public class ChromiumProfileReadingTests
             // Should fall back to directory scan and find the Default profile
             Assert.Single(profiles);
             Assert.Equal("Personal", profiles[0].Name);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void ReadChromiumProfilesFromDir_ThemeColors_ExtractsFrameColor()
+    {
+        // Packed ARGB 0xFF3366CC = -13408564 as int32  → #3366CC
+        string json = """
+            {
+              "profile": {
+                "info_cache": {
+                  "Default": {
+                    "name": "Personal",
+                    "theme_colors": { "frame": -13408564 }
+                  }
+                }
+              }
+            }
+            """;
+        string dir = CreateUserDataDir(json);
+        try
+        {
+            var browser = MakeChromiumBrowser();
+            var profiles = ChromiumProfileReader.ReadProfilesFromDir(dir, browser);
+
+            Assert.Single(profiles);
+            Assert.Equal("#3366CC", profiles[0].ThemeColor);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void ReadChromiumProfilesFromDir_NoThemeColors_ThemeColorIsNull()
+    {
+        string json = """
+            {
+              "profile": {
+                "info_cache": {
+                  "Default": { "name": "Personal" }
+                }
+              }
+            }
+            """;
+        string dir = CreateUserDataDir(json);
+        try
+        {
+            var browser = MakeChromiumBrowser();
+            var profiles = ChromiumProfileReader.ReadProfilesFromDir(dir, browser);
+
+            Assert.Single(profiles);
+            Assert.Null(profiles[0].ThemeColor);
         }
         finally { Directory.Delete(dir, recursive: true); }
     }

@@ -12,6 +12,13 @@ public class BrowserProfile
     public BrowserInfo Browser { get; set; } = null!;
 
     /// <summary>
+    /// Optional accent color for this profile in <c>#RRGGBB</c> hex format.
+    /// Populated from the Chromium <c>Local State → profile.info_cache[dir].theme_colors.frame</c>
+    /// field. <c>null</c> for Firefox profiles and Chromium profiles that use the default theme.
+    /// </summary>
+    public string? ThemeColor { get; set; }
+
+    /// <summary>
     /// When <c>true</c>, this profile represents a private/incognito browsing session.
     /// </summary>
     public bool IsIncognito { get; set; }

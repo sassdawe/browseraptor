@@ -134,12 +134,14 @@ public class BrowserGridRowViewModel
 {
     public string Name { get; }
     public string ExePath { get; }
+    public string? Channel { get; }
     public IReadOnlyList<BrowserEntryViewModel> Profiles { get; }
 
     public BrowserGridRowViewModel(BrowserInfo browser, IReadOnlyList<BrowserEntryViewModel> profiles)
     {
         Name     = browser.Name;
         ExePath  = browser.ExecutablePath;
+        Channel  = browser.Channel;
         Profiles = profiles;
     }
 }
