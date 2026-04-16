@@ -161,6 +161,16 @@ public class BrowserGridRowViewModel
 /// </summary>
 public class BrowserEntryViewModel
 {
+    // Channel / state colour constants (kept in one place for easy theming)
+    private const string ColorBeta      = "#E07700";
+    private const string ColorDev       = "#0D9488";
+    private const string ColorCanary    = "#CA8A04";
+    private const string ColorNightly   = "#7C3AED";
+    private const string ColorIncogText = "#6C7086";   // SubtleBrush – list-view label tint
+    private const string ColorIncogTile = "#45475A";   // CancelBrush – tile background
+    private const string ColorSurface   = "#2A2A3C";   // SurfaceBrush – stable tile background
+    private const string ColorForeground= "#CDD6F4";   // ForegroundBrush – stable label tint
+
     public BrowserInfo Browser { get; }
     public BrowserProfile Profile { get; }
 
@@ -169,7 +179,7 @@ public class BrowserEntryViewModel
     public ICommand? LaunchCommand { get; }
 
     /// <summary>
-    /// Hex color string used to tint the display-name label:
+    /// Hex color string used to tint the display-name label in list view:
     /// grey for incognito profiles, a channel-specific color for Beta/Dev/Canary/Nightly,
     /// or the default foreground color for stable profiles.
     /// </summary>
@@ -177,14 +187,35 @@ public class BrowserEntryViewModel
     {
         get
         {
-            if (Profile.IsIncognito) return "#6C7086";   // SubtleBrush
+            if (Profile.IsIncognito) return ColorIncogText;
             return Browser.Channel switch
             {
-                "Beta"    => "#E07700",
-                "Dev"     => "#0D9488",
-                "Canary"  => "#CA8A04",
-                "Nightly" => "#7C3AED",
-                _         => "#CDD6F4",
+                "Beta"    => ColorBeta,
+                "Dev"     => ColorDev,
+                "Canary"  => ColorCanary,
+                "Nightly" => ColorNightly,
+                _         => ColorForeground,
+            };
+        }
+    }
+
+    /// <summary>
+    /// Background hex color for the profile tile in grid view:
+    /// grey for incognito, channel color for Beta/Dev/Canary/Nightly,
+    /// or the default surface color for stable profiles.
+    /// </summary>
+    public string TileBackground
+    {
+        get
+        {
+            if (Profile.IsIncognito) return ColorIncogTile;
+            return Browser.Channel switch
+            {
+                "Beta"    => ColorBeta,
+                "Dev"     => ColorDev,
+                "Canary"  => ColorCanary,
+                "Nightly" => ColorNightly,
+                _         => ColorSurface,
             };
         }
     }

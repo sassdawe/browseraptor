@@ -64,7 +64,7 @@
         <!-- Profile tile button style (grid view) -->
         <Style x:Key="ProfileTileStyle" TargetType="Button">
             <Setter Property="Background"      Value="{StaticResource SurfaceBrush}"/>
-            <Setter Property="Foreground"      Value="{StaticResource ForegroundBrush}"/>
+            <Setter Property="Foreground"      Value="White"/>
             <Setter Property="FontSize"        Value="12"/>
             <Setter Property="Padding"         Value="10,5"/>
             <Setter Property="Margin"          Value="0,0,6,6"/>
@@ -77,26 +77,12 @@
                                 Background="{TemplateBinding Background}"
                                 CornerRadius="6"
                                 Padding="{TemplateBinding Padding}">
-                            <!-- Left accent bar using the profile's theme colour -->
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="3"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <Rectangle Grid.Column="0"
-                                           Fill="{Binding Profile.ThemeColor,
-                                                  Converter={x:Static local:HexColorToBrushConverter.Instance}}"
-                                           RadiusX="3" RadiusY="3"
-                                           Margin="0,0,6,0"/>
-                                <ContentPresenter Grid.Column="1"
-                                                  HorizontalAlignment="Center"
-                                                  VerticalAlignment="Center"/>
-                            </Grid>
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background"
-                                        Value="{StaticResource AccentBrush}"/>
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.8"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -416,9 +402,11 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Button Style="{StaticResource ProfileTileStyle}"
-                                            Command="{Binding LaunchCommand}">
+                                            Command="{Binding LaunchCommand}"
+                                            Background="{Binding TileBackground,
+                                                         Converter={x:Static local:HexColorToBrushConverter.Instance}}">
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Foreground="{StaticResource AccentBrush}"
+                                            <TextBlock Foreground="White"
                                                        Margin="0,0,4,0"
                                                        VerticalAlignment="Center">
                                                 <TextBlock.Text>
@@ -430,7 +418,7 @@
                                                 </TextBlock.Text>
                                             </TextBlock>
                                             <TextBlock Text="{Binding Profile.Name}"
-                                                       Foreground="{StaticResource ForegroundBrush}"
+                                                       Foreground="White"
                                                        VerticalAlignment="Center"/>
                                         </StackPanel>
                                     </Button>
