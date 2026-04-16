@@ -22,6 +22,11 @@ public class UserPreferences
     /// </summary>
     public bool SingleClickToOpen { get; set; }
 
+    /// <summary>
+    /// When <c>true</c>, the selector opens in grid view; when <c>false</c> (default) it opens in list view.
+    /// </summary>
+    public bool IsGridView { get; set; }
+
     /// <summary>Creates preferences backed by the default per-user config file.</summary>
     public UserPreferences() : this(DefaultFilePath()) { }
 
@@ -46,7 +51,7 @@ public class UserPreferences
         if (!string.IsNullOrEmpty(dir))
             Directory.CreateDirectory(dir);
 
-        var data = new PreferencesData { SingleClickToOpen = SingleClickToOpen };
+        var data = new PreferencesData { SingleClickToOpen = SingleClickToOpen, IsGridView = IsGridView };
         File.WriteAllText(_filePath, JsonSerializer.Serialize(data, JsonOpts));
     }
 
@@ -58,7 +63,10 @@ public class UserPreferences
             string json = File.ReadAllText(_filePath);
             var data = JsonSerializer.Deserialize<PreferencesData>(json);
             if (data != null)
+            {
                 SingleClickToOpen = data.SingleClickToOpen;
+                IsGridView        = data.IsGridView;
+            }
         }
         catch
         {
@@ -69,5 +77,6 @@ public class UserPreferences
     private sealed class PreferencesData
     {
         public bool SingleClickToOpen { get; set; }
+        public bool IsGridView { get; set; }
     }
 }

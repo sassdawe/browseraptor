@@ -20,7 +20,7 @@ public class BrowserSelectorViewModel : INotifyPropertyChanged
     private readonly UserPreferences _preferences = new();
 
     private BrowserEntryViewModel? _selectedEntry;
-    private bool _isGridView = false;
+    private bool _isGridView;
 
     public ObservableCollection<BrowserEntryViewModel> Entries { get; } = new();
     public ObservableCollection<BrowserGridRowViewModel> BrowserRows { get; } = new();
@@ -43,7 +43,14 @@ public class BrowserSelectorViewModel : INotifyPropertyChanged
     public bool IsGridView
     {
         get => _isGridView;
-        set { _isGridView = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsListView)); }
+        set
+        {
+            _isGridView = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsListView));
+            _preferences.IsGridView = value;
+            _preferences.Save();
+        }
     }
 
     public bool IsListView => !_isGridView;
@@ -68,6 +75,9 @@ public class BrowserSelectorViewModel : INotifyPropertyChanged
         CancelCommand   = new RelayCommand(_ => RequestClose?.Invoke());
         CopyLinkCommand = new RelayCommand(_ => Clipboard.SetText(_url));
         ToggleViewCommand = new RelayCommand(_ => IsGridView = !IsGridView);
+
+        // Restore last-used view mode
+        _isGridView = _preferences.IsGridView;
 
         LoadBrowsers();
     }
@@ -157,6 +167,27 @@ public class BrowserEntryViewModel
     public string DisplayName { get; }
     public string ExePath => Browser.ExecutablePath;
     public ICommand? LaunchCommand { get; }
+
+    /// <summary>
+    /// Hex color string used to tint the display-name label:
+    /// grey for incognito profiles, a channel-specific color for Beta/Dev/Canary/Nightly,
+    /// or the default foreground color for stable profiles.
+    /// </summary>
+    public string LabelColor
+    {
+        get
+        {
+            if (Profile.IsIncognito) return "#6C7086";   // SubtleBrush
+            return Browser.Channel switch
+            {
+                "Beta"    => "#E07700",
+                "Dev"     => "#0D9488",
+                "Canary"  => "#CA8A04",
+                "Nightly" => "#7C3AED",
+                _         => "#CDD6F4",
+            };
+        }
+    }
 
     public BrowserEntryViewModel(BrowserInfo browser, BrowserProfile profile,
                                  string? customDisplayName = null,

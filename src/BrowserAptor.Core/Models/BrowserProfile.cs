@@ -68,7 +68,14 @@ public class BrowserProfile
 
         // Chromium-based browsers
         if (IsIncognito)
-            return $"--incognito \"{url}\"";
+        {
+            // Edge uses --inprivate; every other Chromium browser uses --incognito.
+            // Use EndsWith so the check works with both / and \ path separators.
+            bool isEdge = (Browser.ExecutablePath ?? string.Empty)
+                .EndsWith("msedge.exe", StringComparison.OrdinalIgnoreCase);
+            string flag = isEdge ? "--inprivate" : "--incognito";
+            return $"{flag} \"{url}\"";
+        }
 
         if (!string.IsNullOrEmpty(ProfileDirectory))
             return $"--profile-directory=\"{ProfileDirectory}\" \"{url}\"";

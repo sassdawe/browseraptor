@@ -823,6 +823,54 @@ public class IncognitoProfileTests
 
         Assert.Equal("Incognito", profile.ToString());
     }
+
+    [Fact]
+    public void EdgeIncognito_BuildArguments_UsesInPrivateFlag()
+    {
+        var browser = new BrowserInfo
+        {
+            Name = "Microsoft Edge",
+            ExecutablePath = @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            BrowserType = BrowserType.Chromium
+        };
+        var profile = new BrowserProfile
+        {
+            Name = "InPrivate",
+            ProfileDirectory = string.Empty,
+            Browser = browser,
+            IsIncognito = true,
+        };
+
+        string args = profile.BuildArguments("https://example.com");
+
+        Assert.Contains("--inprivate", args);
+        Assert.Contains("\"https://example.com\"", args);
+        Assert.DoesNotContain("--incognito", args);
+    }
+
+    [Fact]
+    public void ChromiumIncognito_NonEdge_UsesIncognitoFlag()
+    {
+        // Brave, Vivaldi, etc. should still get --incognito, not --inprivate
+        var browser = new BrowserInfo
+        {
+            Name = "Brave Browser",
+            ExecutablePath = @"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
+            BrowserType = BrowserType.Chromium
+        };
+        var profile = new BrowserProfile
+        {
+            Name = "Incognito",
+            ProfileDirectory = string.Empty,
+            Browser = browser,
+            IsIncognito = true,
+        };
+
+        string args = profile.BuildArguments("https://example.com");
+
+        Assert.Contains("--incognito", args);
+        Assert.DoesNotContain("--inprivate", args);
+    }
 }
 
 public class UserPreferencesTests
@@ -896,6 +944,62 @@ public class UserPreferencesTests
         finally
         {
             File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void DefaultPreferences_IsGridViewIsFalse()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"prefs_{Guid.NewGuid()}.json");
+        try
+        {
+            var prefs = new UserPreferences(path);
+            Assert.False(prefs.IsGridView);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void SetIsGridView_PersistsToDisk()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"prefs_{Guid.NewGuid()}.json");
+        try
+        {
+            var prefs = new UserPreferences(path);
+            prefs.IsGridView = true;
+            prefs.Save();
+
+            var loaded = new UserPreferences(path);
+            Assert.True(loaded.IsGridView);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void SetIsGridView_False_PersistsToDisk()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"prefs_{Guid.NewGuid()}.json");
+        try
+        {
+            var prefs = new UserPreferences(path);
+            prefs.IsGridView = true;
+            prefs.Save();
+
+            prefs.IsGridView = false;
+            prefs.Save();
+
+            var loaded = new UserPreferences(path);
+            Assert.False(loaded.IsGridView);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
         }
     }
 }
