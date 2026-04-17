@@ -103,6 +103,14 @@ public class BrowserDetectionService : IBrowserDetectionService
                 });
             }
 
+            browser.Profiles.Add(new BrowserProfile
+            {
+                Name = "Incognito",
+                ProfileDirectory = string.Empty,
+                Browser = browser,
+                IsIncognito = true,
+            });
+
             browsers.Add(browser);
         }
     }
@@ -218,6 +226,14 @@ public class BrowserDetectionService : IBrowserDetectionService
                     Browser = browser
                 });
             }
+
+            browser.Profiles.Add(new BrowserProfile
+            {
+                Name = "Private Window",
+                ProfileDirectory = string.Empty,
+                Browser = browser,
+                IsIncognito = true,
+            });
 
             browsers.Add(browser);
         }
@@ -362,10 +378,19 @@ public class BrowserDetectionService : IBrowserDetectionService
 
         // De-duplicate: the same profile can appear in both the Roaming and Local AppData
         // profiles.ini files (e.g. the classic "default-release" profile).
-        return profiles
+        var deduplicated = profiles
             .GroupBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
             .Select(g => g.First())
             .ToList();
+
+        // Firefox's new profile manager creates a "default" profile in addition to the
+        // legacy "default-default" profile.  When both exist, remove the redundant
+        // "default-default" entry so it is not shown twice.
+        if (deduplicated.Any(p => p.Name.Equals("default", StringComparison.OrdinalIgnoreCase)))
+            deduplicated.RemoveAll(p =>
+                p.Name.Equals("default-default", StringComparison.OrdinalIgnoreCase));
+
+        return deduplicated;
     }
 
     /// <summary>
@@ -463,6 +488,14 @@ public class BrowserDetectionService : IBrowserDetectionService
                             Browser = browser
                         });
                     }
+
+                    browser.Profiles.Add(new BrowserProfile
+                    {
+                        Name = browser.BrowserType == BrowserType.Firefox ? "Private Window" : "Incognito",
+                        ProfileDirectory = string.Empty,
+                        Browser = browser,
+                        IsIncognito = true,
+                    });
 
                     browsers.Add(browser);
                 }

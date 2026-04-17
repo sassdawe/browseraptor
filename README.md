@@ -10,7 +10,10 @@ BrowserAptor is a lightweight .NET 10 WPF application that registers itself as a
 
 - 🔍 **Auto-detects all installed browsers**: Google Chrome, Microsoft Edge, Mozilla Firefox, Brave, Vivaldi, Opera, Opera GX, Chromium, Yandex Browser, and more.
 - 👤 **Profile-aware**: Reads Chrome/Edge/Brave/Vivaldi `Local State` files and Firefox `profiles.ini` to list every profile individually.
+- 🕵️ **Incognito / Private mode**: Every detected browser automatically includes an incognito/private profile entry.
 - 🖱️ **Quick selection**: Click or double-click a browser/profile entry, or press Enter to open the link. Press Escape or Cancel to dismiss.
+- 🔲 **Grid CLI view**: Use `--format grid` to see browsers as rows and profiles as columns.
+- 🖱️ **Configurable click mode**: Use `--single-click` to open profiles with a single click instead of double-click.
 - 🪟 **Registers as a Windows browser**: BrowserAptor writes the necessary `HKCU` registry keys so Windows sees it as a browser you can set as default from **Settings → Apps → Default apps → Web browser**.
 - ✨ **No admin rights required**: All registration is done under `HKCU` (current user only).
 
@@ -95,6 +98,27 @@ You can also register or unregister manually:
 ```powershell
 BrowserAptor.exe --register
 BrowserAptor.exe --unregister
+```
+
+---
+
+## CLI Usage
+
+```powershell
+# List all detected browsers and profiles
+BrowserAptor.exe --list-browsers
+
+# List in grid format (browsers as rows, profiles as columns)
+BrowserAptor.exe --list-browsers --format grid
+
+# Other output formats: list (default), json, yaml, csv, table
+BrowserAptor.exe --list-browsers --format json
+
+# Enable single-click to open a profile in the selector window
+BrowserAptor.exe --single-click
+
+# Restore default double-click behavior
+BrowserAptor.exe --no-single-click
 ```
 
 ---

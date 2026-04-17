@@ -12,17 +12,34 @@ public class BrowserProfile
     public BrowserInfo Browser { get; set; } = null!;
 
     /// <summary>
+    /// Optional accent color for this profile in <c>#RRGGBB</c> hex format.
+    /// Populated from the Chromium <c>Local State → profile.info_cache[dir].theme_colors.frame</c>
+    /// field. <c>null</c> for Firefox profiles and Chromium profiles that use the default theme.
+    /// </summary>
+    public string? ThemeColor { get; set; }
+
+    /// <summary>
+    /// When <c>true</c>, this profile represents a private/incognito browsing session.
+    /// </summary>
+    public bool IsIncognito { get; set; }
+
+    /// <summary>
     /// A stable, human-readable identifier of the form <c>{browserId}/{profileSlug}</c>.
+    /// Incognito profiles always use the slug <c>incognito</c>.
     /// For Chromium profiles the slug is derived from the profile directory (e.g.
     /// "Default" → "default", "Profile 1" → "profile-1"). For Firefox the profile
     /// directory contains random characters so the profile name is used instead.
-    /// Examples: "microsoft-edge/default", "mozilla-firefox/default-release"
+    /// Examples: "microsoft-edge/default", "mozilla-firefox/default-release",
+    ///           "google-chrome/incognito"
     /// </summary>
     public string Id
     {
         get
         {
             string browserSlug = Browser?.Id ?? "unknown";
+            if (IsIncognito)
+                return $"{browserSlug}/incognito";
+
             // For Chromium, ProfileDirectory is stable ("Default", "Profile 1").
             // For Firefox, ProfileDirectory is a relative path with random chars;
             // use the profile Name instead.
@@ -42,15 +59,26 @@ public class BrowserProfile
     {
         if (Browser.BrowserType == BrowserType.Firefox)
         {
+            if (IsIncognito)
+                return $"-private-window \"{url}\"";
+
             // Firefox uses -P "profile name" to select profile
             return $"-P \"{Name}\" \"{url}\"";
         }
 
-        // Chromium-based: --profile-directory="Default" or "Profile 1" etc.
-        if (!string.IsNullOrEmpty(ProfileDirectory))
+        // Chromium-based browsers
+        if (IsIncognito)
         {
-            return $"--profile-directory=\"{ProfileDirectory}\" \"{url}\"";
+            // Edge uses --inprivate; every other Chromium browser uses --incognito.
+            // Use EndsWith so the check works with both / and \ path separators.
+            bool isEdge = (Browser.ExecutablePath ?? string.Empty)
+                .EndsWith("msedge.exe", StringComparison.OrdinalIgnoreCase);
+            string flag = isEdge ? "--inprivate" : "--incognito";
+            return $"{flag} \"{url}\"";
         }
+
+        if (!string.IsNullOrEmpty(ProfileDirectory))
+            return $"--profile-directory=\"{ProfileDirectory}\" \"{url}\"";
 
         return $"\"{url}\"";
     }

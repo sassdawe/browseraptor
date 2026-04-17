@@ -18,6 +18,24 @@ public class BrowserInfo
     public string Id => Slugify(Name);
 
     /// <summary>
+    /// The release channel of this browser build, or <c>null</c> for stable releases.
+    /// Possible values: <c>"Canary"</c>, <c>"Nightly"</c>, <c>"Dev"</c>, <c>"Beta"</c>.
+    /// Derived from keywords in <see cref="Name"/>.
+    /// </summary>
+    public string? Channel
+    {
+        get
+        {
+            string n = Name;
+            if (n.Contains("Canary",  StringComparison.OrdinalIgnoreCase)) return "Canary";
+            if (n.Contains("Nightly", StringComparison.OrdinalIgnoreCase)) return "Nightly";
+            if (n.Contains("Dev",     StringComparison.OrdinalIgnoreCase)) return "Dev";
+            if (n.Contains("Beta",    StringComparison.OrdinalIgnoreCase)) return "Beta";
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Converts a string to a lowercase, hyphen-separated slug containing only
     /// ASCII letters, digits, and hyphens.
     /// </summary>

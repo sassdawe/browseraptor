@@ -38,6 +38,7 @@ public static class ChromiumProfileReader
                         string profileName = profileDir;
                         string? userName   = null;
                         string? avatarPath = null;
+                        string? themeColor = null;
 
                         if (profileEntry.Value.TryGetProperty("name", out var nameEl))
                             profileName = nameEl.GetString() ?? profileDir;
@@ -49,12 +50,22 @@ public static class ChromiumProfileReader
                                 "last_downloaded_gaia_picture_url_with_size", out var avatarEl))
                             avatarPath = avatarEl.GetString();
 
+                        // Extract the profile's frame color from the Chromium theme palette.
+                        // Chromium stores colors as packed signed ARGB int32 values.
+                        if (profileEntry.Value.TryGetProperty("theme_colors", out var themeColorsEl) &&
+                            themeColorsEl.TryGetProperty("frame", out var frameEl) &&
+                            frameEl.TryGetInt32(out int packedArgb))
+                        {
+                            themeColor = PackedArgbToHex(packedArgb);
+                        }
+
                         profiles.Add(new BrowserProfile
                         {
                             Name             = profileName,
                             ProfileDirectory = profileDir,
                             UserName         = userName,
                             AvatarIconPath   = avatarPath,
+                            ThemeColor       = themeColor,
                             Browser          = browser,
                         });
                     }
@@ -102,5 +113,17 @@ public static class ChromiumProfileReader
         }
 
         return profiles;
+    }
+
+    /// <summary>
+    /// Converts a Chromium packed ARGB signed int32 to an <c>#RRGGBB</c> hex string.
+    /// </summary>
+    private static string PackedArgbToHex(int packedArgb)
+    {
+        uint argb = (uint)packedArgb;
+        byte r = (byte)((argb >> 16) & 0xFF);
+        byte g = (byte)((argb >> 8)  & 0xFF);
+        byte b = (byte)(argb         & 0xFF);
+        return $"#{r:X2}{g:X2}{b:X2}";
     }
 }

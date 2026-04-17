@@ -461,3 +461,45 @@ Open `coverage/html/index.html` in a browser to view per-class and per-method co
 
 In CI, coverage is collected automatically and reported as part of the workflow run
 artifacts.
+
+---
+
+## New Test Classes (Features 1–4)
+
+### `IncognitoProfileTests`
+
+Tests for the `IsIncognito` property and incognito argument building:
+
+| Test | What it verifies |
+|------|-----------------|
+| `ChromiumIncognito_BuildArguments_UsesIncognitoFlag` | `--incognito` appears in args for Chromium incognito profiles |
+| `FirefoxIncognito_BuildArguments_UsesPrivateWindowFlag` | `-private-window` appears in args for Firefox private profiles |
+| `IncognitoProfile_Id_HasIncognitoSlug` | Chromium incognito `Id` is `chrome/incognito` |
+| `FirefoxIncognitoProfile_Id_HasIncognitoSlug` | Firefox private `Id` is `firefox/incognito` |
+| `IncognitoProfile_IsNotShownInDisplayName_AsRegularProfile` | `ToString()` returns the profile name as-is |
+
+### `UserPreferencesTests`
+
+Tests for `UserPreferences` persistence:
+
+| Test | What it verifies |
+|------|-----------------|
+| `DefaultPreferences_SingleClickIsDisabled` | Fresh preferences default to `SingleClickToOpen = false` |
+| `SetSingleClick_PersistsToDisk` | Enabling and saving round-trips correctly |
+| `DisableSingleClick_PersistsToDisk` | Disabling and saving round-trips correctly |
+| `Load_CorruptFile_UsesDefaults` | Corrupt JSON files fall back to defaults |
+
+### `FirefoxDefaultDefaultTests`
+
+Tests for the Firefox `"default-default"` deduplication fix:
+
+| Test | What it verifies |
+|------|-----------------|
+| `ParseFirefoxProfiles_DefaultDefault_RemovedWhenDefaultExists` | `"default-default"` is removed when `"default"` exists after deduplication |
+
+### `FormatGrid_ShowsBrowserRowsAndProfileColumns` (in `OutputFormatterTests`)
+
+Verifies the `grid` output format:
+- Both browser names appear as row headers.
+- Regular profiles are rendered with `●`.
+- Incognito/private profiles are rendered with `⊘`.
