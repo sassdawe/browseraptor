@@ -22,6 +22,10 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore BrowserAptor.slnx
 
+      - name: Check for vulnerable NuGet packages
+        # dotnet list package --vulnerable exits with a non-zero code when vulnerabilities are found (.NET 7+)
+        run: dotnet list BrowserAptor.slnx package --vulnerable --include-transitive
+
       - name: Build
         run: dotnet build BrowserAptor.slnx --no-restore -c Release
 

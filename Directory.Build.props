@@ -1,0 +1,11 @@
+<Project>
+  <!--
+    Enable Roslyn .NET analyzers at the "Recommended" analysis level for all projects.
+    This surfaces the curated set of code quality and security diagnostics built into
+    the .NET 5+ SDK without requiring any additional NuGet analyzer packages.
+    See: https://learn.microsoft.com/en-us/dotnet/core/project-sdk/msbuild-props#analysismode
+  -->
+  <PropertyGroup>
+    <AnalysisMode>Recommended</AnalysisMode>
+  </PropertyGroup>
+</Project>

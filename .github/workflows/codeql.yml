@@ -1,0 +1,46 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run every Monday at 06:00 UTC for drift detection on main
+    - cron: '0 6 * * 1'
+
+jobs:
+  analyze:
+    name: Analyze (C#)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+          # Use the security-extended query suite for a broader set of security checks
+          queries: security-extended
+
+      - name: Restore dependencies
+        run: dotnet restore BrowserAptor.slnx
+
+      - name: Build (for CodeQL)
+        # Build the cross-platform projects; WPF project is excluded on Linux automatically
+        run: dotnet build BrowserAptor.slnx --no-restore -c Release
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:csharp"
