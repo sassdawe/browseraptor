@@ -1,4 +1,4 @@
-name: Build Installer
+name: Release
 
 on:
   push:
@@ -7,26 +7,59 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-installer:
-    name: Build Installer (win-x64)
+  release:
+    name: Build, Verify & Publish Release
     runs-on: windows-latest
     permissions:
-      contents: read
+      contents: write      # Create GitHub releases and upload assets
+      id-token: write      # OIDC token required for artifact attestation
+      attestations: write  # Write build-provenance attestations
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: '10.0.x'
 
       - name: Restore dependencies
         run: dotnet restore BrowserAptor.slnx
 
-      - name: Run tests
-        run: dotnet test tests/BrowserAptor.Tests/BrowserAptor.Tests.csproj --no-restore -c Release
+      # -- Security gate ------------------------------------------------------
+      - name: Check for vulnerable NuGet packages
+        # Exits non-zero if any vulnerable package is found (.NET 7+)
+        run: dotnet list BrowserAptor.slnx package --vulnerable --include-transitive
 
+      # -- Build & test -------------------------------------------------------
+      - name: Build
+        run: dotnet build BrowserAptor.slnx --no-restore -c Release
+
+      - name: Run tests
+        run: dotnet test tests/BrowserAptor.Tests/BrowserAptor.Tests.csproj --no-build -c Release
+
+      # -- Determine release version ------------------------------------------
+      - name: Determine release version
+        id: version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            $tag = $env:GITHUB_REF_NAME
+            $prerelease = 'false'
+          } else {
+            $csprojVersion = (Select-String -Path 'src/BrowserAptor/BrowserAptor.csproj' `
+              -Pattern '<Version>(.*?)</Version>').Matches[0].Groups[1].Value
+            $sha  = git rev-parse --short HEAD
+            $date = Get-Date -Format 'yyyyMMdd'
+            $tag  = "v$csprojVersion-dev.$date.$sha"
+            $prerelease = 'true'
+          }
+          "TAG=$tag"               | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "PRERELEASE=$prerelease" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Release tag: $tag  |  pre-release: $prerelease"
+
+      # -- Package artifact ---------------------------------------------------
       - name: Publish self-contained executable
         run: |
           dotnet publish src/BrowserAptor/BrowserAptor.csproj `
@@ -41,9 +74,76 @@ jobs:
           Get-ChildItem -Path publish\ -Exclude *.pdb |
             Compress-Archive -DestinationPath BrowserAptor-win-x64.zip
 
-      - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+      # -- Generate SBOM ------------------------------------------------------
+      - name: Install CycloneDX .NET global tool
+        run: dotnet tool install --global CycloneDX --version 4.1.0
+
+      - name: Generate SBOM (CycloneDX JSON)
+        # Generates sbom/bom.json from the main application project's dependency graph
+        run: dotnet CycloneDX src/BrowserAptor/BrowserAptor.csproj -o sbom -fn bom -j
+
+      - name: Verify SBOM was generated
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'sbom/bom.json')) {
+            Write-Error 'SBOM file not found -- aborting release.'
+            exit 1
+          }
+          $size = (Get-Item 'sbom/bom.json').Length
+          Write-Host "SBOM generated: sbom/bom.json ($size bytes)"
+
+      - name: Rename SBOM for release asset
+        shell: pwsh
+        run: Copy-Item sbom/bom.json browseraptor-sbom.json
+
+      # -- Artifact attestation -----------------------------------------------
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
-          name: BrowserAptor-win-x64
-          path: BrowserAptor-win-x64.zip
-          retention-days: 30
+          subject-path: |
+            BrowserAptor-win-x64.zip
+            browseraptor-sbom.json
+
+      # -- Publish GitHub Release ---------------------------------------------
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tag        = '${{ steps.version.outputs.TAG }}'
+          $prerelease = '${{ steps.version.outputs.PRERELEASE }}' -eq 'true'
+          $sha        = git rev-parse HEAD
+
+          $notes = @(
+            "**Commit:** $sha"
+            ""
+            "**Assets**"
+            "- \`\`BrowserAptor-win-x64.zip\`\` -- self-contained Windows (x64) executable; no .NET runtime required."
+            "- \`\`browseraptor-sbom.json\`\` -- Software Bill of Materials (CycloneDX v1 JSON); lists all NuGet dependencies with versions and known vulnerability status."
+            ""
+            "**Provenance**"
+            "Build provenance attestations for both assets are attached to this release."
+            "Verify with the [GitHub CLI](https://docs.github.com/en/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds):"
+            "\`\`gh attestation verify BrowserAptor-win-x64.zip --repo `${{ github.repository }}\`\`"
+          ) -join \"`n"
+
+          $releaseArgs = @(
+            'release', 'create', $tag,
+            '--title', "BrowserAptor $tag",
+            '--notes', $notes,
+            'BrowserAptor-win-x64.zip',
+            'browseraptor-sbom.json'
+          )
+          if ($prerelease) { $releaseArgs += '--prerelease' }
+
+          & gh @releaseArgs
+
+      # -- Upload workflow artifacts ------------------------------------------
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-${{ steps.version.outputs.TAG }}
+          path: |
+            BrowserAptor-win-x64.zip
+            browseraptor-sbom.json
+          retention-days: 90
