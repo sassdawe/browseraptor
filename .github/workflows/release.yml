@@ -114,18 +114,18 @@ jobs:
           $prerelease = '${{ steps.version.outputs.PRERELEASE }}' -eq 'true'
           $sha        = git rev-parse HEAD
 
-          $notes = @"
-**Commit:** $sha
-
-**Assets**
-- ``BrowserAptor-win-x64.zip`` -- self-contained Windows (x64) executable; no .NET runtime required.
-- ``browseraptor-sbom.json`` -- Software Bill of Materials (CycloneDX v1 JSON); lists all NuGet dependencies with versions and known vulnerability status.
-
-**Provenance**
-Build provenance attestations for both assets are attached to this release.
-Verify with the [GitHub CLI](https://docs.github.com/en/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds):
-``gh attestation verify BrowserAptor-win-x64.zip --repo ${{ github.repository }}``
-"@
+          $notes = @(
+            "**Commit:** $sha"
+            ""
+            "**Assets**"
+            "- \`\`BrowserAptor-win-x64.zip\`\` -- self-contained Windows (x64) executable; no .NET runtime required."
+            "- \`\`browseraptor-sbom.json\`\` -- Software Bill of Materials (CycloneDX v1 JSON); lists all NuGet dependencies with versions and known vulnerability status."
+            ""
+            "**Provenance**"
+            "Build provenance attestations for both assets are attached to this release."
+            "Verify with the [GitHub CLI](https://docs.github.com/en/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds):"
+            "\`\`gh attestation verify BrowserAptor-win-x64.zip --repo `${{ github.repository }}\`\`"
+          ) -join \"`n"
 
           $releaseArgs = @(
             'release', 'create', $tag,
